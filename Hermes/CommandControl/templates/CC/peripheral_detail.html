@@ -1,0 +1,116 @@
+{% extends 'CC/base.html'%}
+
+{% block content %}
+
+
+
+
+
+<div class="center">
+    <h3> {{ peripheral.name }} </h3>
+    <h3> {{ peripheral.periph_type }} </h3>
+    <h3> Parameters: {{ peripheral.parameter_set.all|length }} </h3>
+    <h3> State: </h3>
+    <h3> Power: </h3>
+
+
+    {% if peripheral.parameter_set.all|length > 0 %}
+    <div class="subtable">
+        <div class="subtable_header"> Parameter </div>
+        <div class="subtable_header"> Get </div>
+        <div class="subtable_header"> Set </div>
+        <div class="subtable_header"> Action </div>
+        <div class="subtable_header"> Details </div>
+
+         {% for param in peripheral.parameter_set.all %}
+            <div class="subtable_element">{{ param.name }}</div>
+            <div class="subtable_element">{% if param.is_getable %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
+            <div class="subtable_element">{% if param.is_setable %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
+            <div class="subtable_element">{% if param.is_action %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
+            <div class="subtable_element"> <button type="button" class="collapsible" style="background-color: black; color: rgb(250, 115, 0)"><b>+</b></button></div>
+            <div class="subtable_collapsible" id="{{param.id}}">
+                {% if param.is_getable %}
+                    <button type="button" class="param_get" id="{{ param.id }}"> Get </button><b> Value: </b> <input class="get_val" id="get_val_{{param.id}}"> {{ param.last_value }} </input>{{ param.units }}
+                {% endif %}
+                {% if param.is_setable %}
+                    <br><button type="button" class="param_set" id="{{ param.id }}"> Set </button><b> Input: </b> <input class="set_val" id="set_val_{{param.id}}" max={{param.max_value}}> {{ param.last_value }} </input>  {{param.units}}
+                {% endif %}
+                {% if param.is_action %}
+                    <button type="button" class="param_act" id="{{ param.id }}"> Do </button>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+
+<script>
+
+    const datachannel = new WebSocket(
+        'ws://'
+        + window.location.host
+        + "/ws/peripheral/"
+    );
+
+    datachannel.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        console.log(data);
+        var source_param = data['param_id'];
+        var sub;
+        var subs = document.querySelectorAll('.get_val');
+        for(var i=0; i<subs.length; i++) {
+            var update = 'get_val_' + source_param;
+            if(subs[i].id == update) {
+                sub = subs[i];
+                sub.value = data['data'];
+            }
+        }
+    };
+
+
+
+    datachannel.onclose = function(e) {
+        console.error("Websocket closed unexpectedly!");
+    }
+    
+
+    var get_buttons = document.getElementsByClassName('param_get');
+
+    for(var i=0; i< get_buttons.length; i++) {
+        get_buttons[i].onclick = function(e) {
+            var source = e.originalTarget.id;
+            const msg = "GET";
+            datachannel.send(JSON.stringify({
+                "dev_id": "{{ peripheral.device.id }}",
+                "periph_id": "{{ peripheral.id }}",
+                "param_id": source,
+                "cmd_type": msg,
+            }));
+        };
+    }
+
+    var set_buttons = document.getElementsByClassName('param_set');
+
+    for(var i=0; i< set_buttons.length; i++) {
+        set_buttons[i].onclick = function(e) {
+            var source = e.originalTarget.id;
+            var source_int = 
+            var source_name = "set_val_" + source;
+            var input = document.getElementById(source_name).value;
+            const msg = "SET";
+            datachannel.send(JSON.stringify({
+                "dev_id": "{{ peripheral.device.id }}",
+                "periph_id": "{{ peripheral.id }}",
+                "param_id": source,
+                "cmd_type": msg,
+                "data": input,
+                "data_type": {{ peripheral.data_type }}
+            }));
+        };
+    }
+    
+</script>
+
+
+</div>
+{% endblock %}

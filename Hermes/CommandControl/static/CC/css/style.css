@@ -1,0 +1,174 @@
+
+
+body {
+    font-family: "Courier New", monospace;
+    background-color: black;
+}
+
+.navbar {
+    overflow: hidden;
+    grid-column-start: 1;
+    grid-column-end: 4;
+    font-family: "Courier New", monospace;
+    background-color: black;
+
+}
+
+.navbar button {
+    background-color: black;
+    border: none;
+}
+
+.navbar a {
+  float: inline-start;
+  font-size: 14px;
+  color: white;
+  text-align: center;
+  padding: 20px;
+  border-style: none solid none none;
+  border-color: rgb(250, 115, 0);
+  border-width: medium;
+  min-width: 80px;
+  text-decoration: none;
+}
+
+.banner {
+    overflow: visible;
+    grid-column-start: 1;
+    grid-column-end: 4;
+    min-height: 60px;
+}
+
+.dropdown {
+  float: inline-start;
+  overflow: hidden;
+}
+
+.dropdown a {
+    border-style: none solid solid solid;
+}
+
+.dropdown .dropbtn {
+    font-size: 14px;  
+    color: white;
+    padding: 20px;
+    background-color: transparent;
+    font-family: inherit;
+    margin: 2px;
+}
+
+.navbar a:hover, .dropdown:hover .dropbtn {
+    color: black;
+    background-color:rgb(250, 115, 0);
+
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: rgb(250, 115, 0);
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+
+.dropdown-content a {
+  float: none;
+  color: black;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+  text-align: left;
+}
+
+.dropdown-content a:hover {
+  background-color: black;
+  color: rgb(250, 115, 0);
+}
+
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+
+.center {
+    color: antiquewhite;
+    font-size: 14px;
+    overflow: hidden;
+}
+
+.center table {
+    color: antiquewhite;
+    font-size: 12px;
+}
+
+.center th, td {
+    padding-right: 40px;
+    padding-top: 15px;
+    text-align: center;
+    border: none solid solid none;
+    border-color: rgb(250, 115, 0);
+}
+
+#table_hl_row:hover {
+    background-color: rgb(250, 115, 0);
+    color: black;
+}
+
+.center-right {
+    overflow: scroll;
+    background-color: rgb(35, 35, 35);
+    height: 70%;
+}
+
+.righttop {
+    overflow: hidden;
+}
+
+.subtable {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 2fr;
+    grid-template-rows: auto;
+    grid-row-gap: 2%;
+    background-color: rgb(5, 5, 5);
+    padding: 1%;
+    font-size: 18px;
+}
+
+.subtable_header {
+    background-color: rgb(250, 115, 0);
+    color: black;
+    border: none solid none none;
+}
+
+.subtable_collapsible {
+    grid-column-start: 1;
+    grid-column-end: 6;
+    background-color: rgb(10,10, 10);
+    display: none;
+    overflow: hidden;
+
+}
+
+.subtable_element {
+    padding-top: 1%;
+    padding-bottom: 1%;
+    color: rgb(250, 115, 0);
+    background-color: black;
+    padding-bottom: 1%;
+    padding-top: 1%;
+}
+
+.get_val {
+    padding-top: 1%;
+    background-color: white;
+    color: black;
+}
+
+
+.main {
+    display: grid;
+    grid-template-rows: 1fr 1fr 6fr;
+    grid-template-columns: 1fr 5fr 1fr;
+    grid-column-gap: 10px;
+    grid-row-gap: 2px;
+}

@@ -1,0 +1,23 @@
+{% extends 'CC/base.html' %}
+
+{% block content %}
+<div id="center" style="color: darkorange">
+    <img src="{{ device.image.url }}" alt="image" height="200px" width="240px" align="right">
+   
+    <h3> {{ device.name }} </h3>
+    <h3> {{ device.dev_type }} </h3>
+    <h3> Peripherals: {{ device.num_peripherals }} </h3>
+
+    {% if device.peripheral_set.all %}
+        <table style="color: white">
+        {% for periph in device.peripheral_set.all %}
+            <tr>
+                <td><a href="{% url 'peripheral' periph.id %}">{{ periph.name }}</a> </td>
+                <td>{{ periph.id }}</td>
+            </tr>
+        {% endfor %}
+        </table>
+    {% endif %}
+</div>
+
+{% endblock %}
