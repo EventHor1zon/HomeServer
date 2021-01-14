@@ -11,6 +11,7 @@ from channels.db import database_sync_to_async
 from asyncio.queues import Queue, QueueEmpty, QueueFull
 from django.core.exceptions import ObjectDoesNotExist
 
+from datetime import datetime
 
 from .command_api import *
 from . import models
@@ -50,10 +51,12 @@ class DataConsumer(AsyncWebsocketConsumer):
         print(data)
         data['data'] = 42
         
-        url, rsp = await self.build_request(data)
-
+        url, rq = await self.build_request(data)
+        print(url)
         if len(url) == 0:
-            await self.send(json.dumps(rsp))
+            await self.send(json.dumps(rq))
+        else:
+            await self.ext_http_post(url, rq)
 
         await self.send(json.dumps(data))
 
@@ -64,28 +67,26 @@ class DataConsumer(AsyncWebsocketConsumer):
     #   device url
     #   Returns the response or timeout error
     ########################
-    # async def ext_http_post(self, url, data):
+    async def ext_http_post(self, url, data):
 
-    #     result = 0
-    #     response_data = {}
+        result = 0
+        response_data = {}
+        print("Posting")
+        print(url)
+        print(data)
+        async with aiohttp.ClientSession() as s:
+            async with s.post(url, json=data) as rsp:
+                result = rsp.status
+                print(rsp)
+                try:
+                    response_data = await rsp.json()
+                    print(response_data)
+                except:
+                    print("Error unpacking JSON")
+                    response_data['error_code'] = ERR_CODE_INVALID_JSON
+                    response_data['message'] = "Invalid json"
 
-    #     async with aiohttp.ClientSession(timeout=API_EXT_HTTP_RQ_TIMEOUT) as s:
-    #         async with s.post(url, json=data) as rsp:
-    #             if len(rsp.json) > API_MAX_HTTP_DATA_LEN:
-    #                 print("Error: Excess data")
-    #                 response_data['error_code'] = ERR_CODE_INVALID_RESPONSE_LEN
-    #                 response_data['message'] = "Excess response data"
-    #             else:
-    #                 result = rsp.status
-    #                 try:
-    #                     response_data = await rsp.json()
-    #                     print(response_data)
-    #                 except:
-    #                     print("Error unpacking JSON")
-    #                     response_data['error_code'] = ERR_CODE_INVALID_JSON
-    #                     response_data['message'] = "Invalid json"
-
-    #     return result, response_data
+        return result, response_data
 
 
     # async def ext_websocket(self):
@@ -184,8 +185,8 @@ class DataConsumer(AsyncWebsocketConsumer):
                 request['data'] = 0
                 request['data_type'] = 0       
 
-
-            url = device_object.ip_address
+            url = "http://"
+            url += device_object.ip_address
             url += ":"
             url += str(device_object.api_port)
             if not device_object.cmd_url.startswith("/"):
@@ -255,4 +256,181 @@ class DataConsumer(AsyncWebsocketConsumer):
                 return False
             except ObjectDoesNotExist:
                 return True
+
+
+
+
+
+class Discoverer(AsyncWebsocketConsumer):
+
+    
+
+    async def receive(self, text_data):
+        
+        data = json.loads(text_data)
+        target = data['ip_addr']
+        ext = data['extension']
+
+    
+
+
+    async def enumerate_device(self, target, extension):
+
+        data = {"cmd_type": 0,
+                "periph_id": 0,
+                "param_id": 0,
+                "data": 0,
+                "data_type": 0
+                }
+
+        rsp_t = 0
+        dev_name = 0
+        periph_ids = []
+        periph_num = 0
+        device_id = 0
+
+        peripherals = []
+        
+
+        url = "http://"
+        url += target
+        url += extension
+
+        fail = False
+
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.post(target, json=data) as rsp:
+                    
+                    status = rsp.status
+                    await self.send(json.dumps({"data": "> Got response [" + str(status) + "]", "code": status}))
+                    data = await rsp.json()
+                    dev_name = data['name']
+                    periph_ids = data['periph_ids']
+                    periph_num = data['periph_num']
+                    device_id = data['dev_id']
+
+                    if(type(periph_ids) != list):
+                        await self.send(json.dumps({"data": "> Got weird list! FAILED"}))
+                        fail = True
+
+        except aiohttp.ClientConnectionError:
+            await self.send(json.dumps({"data": "Error: Device is unnreachable!", "code": 504}))
+            fail = True
+        except aiohttp.InvalidURL:
+            await self.send(json.dumps({"data": "Error: Invalid URL!"}))
+            fail = True
+
+        ## sanity checking the json type
+        if not fail:
+            p_info = {
+                "cmd_type": 0,
+                "periph_id": 0,
+                "param_id": 0,
+                "data": 0,
+                "data_type": 0
+            }
+
+            for p in periph_ids:
+                p_info['param_id'] = p
+                p_model = {}
+
+                try:
+                    async with aiohttp.ClientSession() as s:
+                        async with s.post(target, json=p_info) as rsp:
+                            p_data = await rsp.json()
+                            p_model["param_ids"] = p_data['param_ids']
+                            p_model["periph_name"] = p_data['name']
+                            p_model["param_num"] = p_data['param_num']
+                            p_model["periph_id"] = p_data['periph_id']
+                            p_model["params": []]
+                            await self.send(json.dumps({"data": f"Enumerated: Peripheral {p_model['periph_name']} [{p_model['periph_id']}]- {p_model['param_num']} Parameters"}))
+                except aiohttp.ClientResponseError:
+                    await self.send(json.dumps({"data": "Bad response from device! FAIL"}))
+                    fail = True
+                except KeyError:
+                    await self.send(json.dumps({"data": "Missing keys in response!", "code": 505}))
+
+                if not fail:
+                    prm_info = {
+                        "cmd_type": 0,
+                        "periph_id": p,
+                        "param_id": 0,
+                        "data": 0,
+                        "data_type": 0                
+                    }
+
+
+                    for param in p_model['param_ids']:
+
+                        prm_info['param_id'] = param
+                        try:
+                            prm_model = {}
+                            async with aiohttp.ClientSession() as s:
+                                async with s.post(target, json=p_info) as rsp:
+                                    prm_data = await rsp.json()  
+                                    prm_model['param_name'] = prm_data['param_name']
+                                    prm_model['periph_id'] = prm_data['periph_id']
+                                    prm_model['param_id'] = prm_data['param_id']
+                                    prm_model['param_type'] = prm_data['param_type']
+                                    prm_model['methods'] = prm_data['methods']
+                                    prm_model['param_max'] = prm_data['param_max']
+                                    prm_model['data_type'] = prm_data['data_type']
+
+                                    p_model['params'].append(prm_model)
+                                    await self.send(json.dumps({"data": f"Enumerated: [child {p_model['periph_id']}]Parameter: {prm_model['param_name']} [{prm_model['param_id']}]"}))
+
+                        except aiohttp.ClientResponseError:
+                            await self.send(json.dumps({"data": "Bad response from device! FAIL"}))
+                            fail = True
+                        except KeyError:
+                            await self.send(json.dumps({"data": "Missing keys in response!", "code": 505}))
+                            fail = True
+
+                peripherals.append(p_model)
+
+        if not fail:
+            await self.send(json.dumps({"data": "[+] Device succesfully enumerated", "code": 0}))
+            await self.send(json.dumps({"data": " # Engaging database... standby", "code": 0}))
+        else:
+            await self.send(json.dumps({"data": "[-] Device enumeration failed :(", "code": 0}))
+        
+
+        if not fail:
+            ## log items to the database
+
+            device_info = { "dev_name": dev_name,
+                            "periph_num": periph_num,
+                            "dev_id": device_id,
+                            "last_polled": datetime.now(),
+
+                            }
+
+            for item in peripherals:
+                
+
+
+
+
+    @database_sync_to_async
+    def build_new_device(self, d_info)
+        pass
+
+    @database_sync_to_async
+    def build_new_peripheral(self, p_info):
+        pass
+
+    @database_sync_to_async
+    def build_new_parameter(self, prm_info):
+        pass
+
+
+
+
+
+
+
+
+
+
 

@@ -68,12 +68,10 @@
     };
 
 
-
     datachannel.onclose = function(e) {
         console.error("Websocket closed unexpectedly!");
     }
     
-
     var get_buttons = document.getElementsByClassName('param_get');
 
     for(var i=0; i< get_buttons.length; i++) {
@@ -87,14 +85,13 @@
                 "cmd_type": msg,
             }));
         };
-    }
+    };
 
     var set_buttons = document.getElementsByClassName('param_set');
 
     for(var i=0; i< set_buttons.length; i++) {
         set_buttons[i].onclick = function(e) {
             var source = e.originalTarget.id;
-            var source_int = 
             var source_name = "set_val_" + source;
             var input = document.getElementById(source_name).value;
             const msg = "SET";
@@ -104,7 +101,7 @@
                 "param_id": source,
                 "cmd_type": msg,
                 "data": input,
-                "data_type": {{ peripheral.data_type }}
+                "data_type": "{{ peripheral.data_type }}",
             }));
         };
     }

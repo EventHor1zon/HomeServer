@@ -1,0 +1,45 @@
+{% extends CC/base.html %}
+
+
+{% block content %}
+
+
+<div class="center">
+
+
+    <h2>Discover Devices</h2>
+    <br>
+    <br>
+    <b>IP Address: </b>
+    <input class="ip_addr" style="width: 30%;"> </input>
+    <b>Extension: </b>
+    <input class="ext" style="width: 30%;"></input>
+    
+    <button style="border: solid; border-color: rgb(250, 115, 0); background-color: black; color: rgb(250, 115, 0);">
+     RUN
+    </button>
+    <br>
+
+    <div class="console" id="box">
+        <i> user@Discover:/~ </i>
+    </div>
+
+    <script>
+
+        const channel = new WebSocket(
+            'ws://'
+            + window.location.host
+            + 'ws/discover'
+        );
+
+        channel.onmessage = function(e) {
+            const data = JSON.parse(e.data)
+        }
+
+    </script>
+
+
+</div>
+
+
+{% endblock content %}

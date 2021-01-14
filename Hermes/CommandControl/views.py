@@ -5,7 +5,7 @@ from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse
 from django.template import loader
 from .models import Device, Peripheral, Parameter
-from django.views.generic import TemplateView, DetailView
+from django.views.generic import TemplateView, DetailView, View
 from Hermes.settings import DATABASES
 
 import os
@@ -68,3 +68,21 @@ def device_details(request, device_id):
 def peripheral_details(request):
     return HttpResponse("Hi")
 
+
+
+class DiscoverView(View):
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get(self, request):
+
+        template = loader.get_template("CC/discover.html")
+        devices = Device.objects.all()
+
+        context = {
+            "devices": devices,
+        }
+
+        return HttpResponse(template.render(context, request))
