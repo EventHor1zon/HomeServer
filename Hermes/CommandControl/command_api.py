@@ -23,6 +23,10 @@ RSP_TYPE_DATA = 0x02
 RSP_TYPE_ERR = 0x03
 RSP_TYPE_STREAM = 0x04
 
+API_GET_MASK = 1
+API_SET_MASK = 2
+API_ACT_MASK = 4
+
 base_keys = ["cmd_type", "periph_id", "param_id", "dev_id"]
 set_keys = ["cmd_type", "periph_id", "param_id", "dev_id", "data"]
 

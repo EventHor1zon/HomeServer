@@ -270,11 +270,13 @@ class Discoverer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         target = data['ip_addr']
         ext = data['extension']
+        port = data['port']
 
+        await self.send(json.dumps({"data": f"> Enumerating device at [{target}]", "code": 1}))
     
 
 
-    async def enumerate_device(self, target, extension):
+    async def enumerate_device(self, target, port, extension):
 
         data = {"cmd_type": 0,
                 "periph_id": 0,
@@ -288,12 +290,13 @@ class Discoverer(AsyncWebsocketConsumer):
         periph_ids = []
         periph_num = 0
         device_id = 0
-
+        port=0
         peripherals = []
         
-
         url = "http://"
         url += target
+        url += ":"
+        url += port
         url += extension
 
         fail = False
@@ -340,9 +343,11 @@ class Discoverer(AsyncWebsocketConsumer):
                         async with s.post(target, json=p_info) as rsp:
                             p_data = await rsp.json()
                             p_model["param_ids"] = p_data['param_ids']
-                            p_model["periph_name"] = p_data['name']
+                            p_model["name"] = p_data['name']
                             p_model["param_num"] = p_data['param_num']
                             p_model["periph_id"] = p_data['periph_id']
+                            p_model['sleep_state'] = 0
+                            p_model['is_powered'] = True
                             p_model["params": []]
                             await self.send(json.dumps({"data": f"Enumerated: Peripheral {p_model['periph_name']} [{p_model['periph_id']}]- {p_model['param_num']} Parameters"}))
                 except aiohttp.ClientResponseError:
@@ -369,12 +374,12 @@ class Discoverer(AsyncWebsocketConsumer):
                             async with aiohttp.ClientSession() as s:
                                 async with s.post(target, json=p_info) as rsp:
                                     prm_data = await rsp.json()  
-                                    prm_model['param_name'] = prm_data['param_name']
+                                    prm_model['name'] = prm_data['param_name']
                                     prm_model['periph_id'] = prm_data['periph_id']
                                     prm_model['param_id'] = prm_data['param_id']
                                     prm_model['param_type'] = prm_data['param_type']
                                     prm_model['methods'] = prm_data['methods']
-                                    prm_model['param_max'] = prm_data['param_max']
+                                    prm_model['max_value'] = prm_data['param_max']
                                     prm_model['data_type'] = prm_data['data_type']
 
                                     p_model['params'].append(prm_model)
@@ -399,30 +404,148 @@ class Discoverer(AsyncWebsocketConsumer):
         if not fail:
             ## log items to the database
 
-            device_info = { "dev_name": dev_name,
+            device_info = { 
+                            "dev_name": dev_name,
                             "periph_num": periph_num,
                             "dev_id": device_id,
                             "last_polled": datetime.now(),
-
+                            "ip_addr": target,
+                            "api_port": int(port),
+                            "cmd_url": extension,
+                            "num_peripherals": periph_num, 
+                            "sleep_state": 0,
+                            "is_powered": True,
+                            "setup_date": datetime.now(),
                             }
 
-            for item in peripherals:
-                
+            result = await self.build_new_device(device_info)
+            
+            if not result:
+                await self.send(json.dumps({"data": "- failed when creating new device", "code": 201}))
+                fail = True
+            else:
+                await self.send(json.dumps({"data": "- Created new Device [id]", "code": 201}))
+
+            if not fail:
+                for item in peripherals:
+                    item['device'] = device_info['dev_id']
+                    
+                    result = await self.build_new_peripheral(item)
+
+                    if not result:
+                        await self.send(json.dumps({"data": "- - failed when creating new peripheral", "code": 201}))
+                        fail = True
+                    else:
+                        await self.send(json.dumps({"data": "- - Created new Peripheral [id]", "code": 201}))
+
+                    if not fail: 
+                        for p in item['peripherals']:
+                            p['is_gettable'] = (p['methods'] & API_GET_MASK)
+                            p['is_settable'] = (p['methods'] & API_SET_MASK)
+                            p['is_action'] = (p['methods'] & API_ACT_MASK)
+                            
+                            result = await self.build_new_parameter(p)
+
+                            if not result:
+                                await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 201}))
+                                fail = True
+                            else:
+                                await self.send(json.dumps({"data": "- - - Created new Peripheral [id]", "code": 201}))
+
 
 
 
 
     @database_sync_to_async
-    def build_new_device(self, d_info)
-        pass
+    def build_new_device(self, d_info):
+        success = True
+        try:
+            D = models.Device(
+                dev_name=d_info['dev_name'],
+                periph_num=d_info['periph_num'],
+                dev_id=d_info['dev_id'],
+                last_polled=d_info['last_polled'],
+                ip_addr=d_info['ip_addr'],
+                api_port=d_info['api_port'],
+                cmd_url=d_info['cmd_url'],
+                num_peripherals=d_info['num_peripherals'],
+                sleep_state=d_info['sleep_state'],
+                is_powered=d_info['is_powered'],
+                setup_date=d_info['setup_date'],
+            )
+        except KeyError:
+            print("Key Error!")
+            success = False
+
+        if success:
+            try:
+                D.save()
+            except:
+                success = False
+        return success
 
     @database_sync_to_async
     def build_new_peripheral(self, p_info):
-        pass
+        success = True
+
+        try:
+            D = models.Device.objects.get(dev_id=p_info['device'])
+
+            P = models.Peripheral(
+                device=D,
+                name=p_info['name'],
+                num_params=p_info['param_num'],
+                periph_type=p_info['periph_type'],
+                sleep_state=p_info['sleep_state'],
+                is_powered=p_info['is_powered'],
+            )
+
+        except KeyError:
+            print("Key Error!")
+            success = False
+        except ObjectDoesNotExist:
+            print("Parent Object does not exist!")
+            success = False
+            
+        if success:
+            try:
+                P.save()
+            except:
+                success = False
+        return success
+
 
     @database_sync_to_async
     def build_new_parameter(self, prm_info):
-        pass
+        success = True
+
+        try:
+            Per = models.Peripheral.objects.get(periph_id=prm_info['peripheral'])
+
+            P = models.Parameter(
+                param_id=prm_info['param_id'],
+                peripheral=Per,
+                name=prm_info['name'],
+                max_value=prm_info['max_value'],
+                data_type=prm_info['data_type'],
+                is_getable=prm_info['is_getable'],
+                is_setable=prm_info['is_setable'],
+                is_action=prm_info['is_action'],
+            )
+
+        except KeyError:
+            print("Key Error!")
+            success = False
+        except ObjectDoesNotExist:
+            print("Parent Object does not exist!")
+            success = False
+
+        if success:
+            try:
+                P.save()
+            except:
+                success = False
+        return success
 
 
 

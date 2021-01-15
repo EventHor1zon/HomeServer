@@ -7,6 +7,7 @@ from datetime import datetime
 
 class Device(models.Model):
 
+    dev_id = models.IntegerField()
     ip_address = models.GenericIPAddressField()
     api_port = models.IntegerField(default=80)
     cmd_url = models.CharField(max_length=50)
@@ -23,6 +24,7 @@ class Device(models.Model):
 
 class Peripheral(models.Model):
 
+    periph_id = models.IntegerField()
     device = models.ForeignKey(Device, on_delete=models.CASCADE)
     name = models.CharField(max_length=40)
     num_params = models.IntegerField()
@@ -34,6 +36,7 @@ class Peripheral(models.Model):
 
 class Parameter(models.Model):
 
+    param_id = models.IntegerField()
     peripheral = models.ForeignKey(Peripheral, on_delete=models.CASCADE)
     name = models.CharField(max_length=40)
     max_value = models.IntegerField()
