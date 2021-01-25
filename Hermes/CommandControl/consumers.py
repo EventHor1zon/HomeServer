@@ -48,18 +48,14 @@ class DataConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
-        print(data)
-        data['data'] = 42
         
         url, rq = await self.build_request(data)
-        print(url)
         if len(url) == 0:
             await self.send(json.dumps(rq))
         else:
-            await self.ext_http_post(url, rq)
-
-        await self.send(json.dumps(data))
-
+            result, response = await self.ext_http_post(url, rq)
+            await self.send(json.dumps(response))
+            await self.update_peripheral(response)
 
     ########################
     #   relay_request
@@ -69,29 +65,27 @@ class DataConsumer(AsyncWebsocketConsumer):
     ########################
     async def ext_http_post(self, url, data):
 
-        result = 0
+        result = True
         response_data = {}
         print("Posting")
-        print(url)
-        print(data)
-        async with aiohttp.ClientSession() as s:
-            async with s.post(url, json=data) as rsp:
-                result = rsp.status
-                print(rsp)
-                try:
-                    response_data = await rsp.json()
-                    print(response_data)
-                except:
-                    print("Error unpacking JSON")
-                    response_data['error_code'] = ERR_CODE_INVALID_JSON
-                    response_data['message'] = "Invalid json"
 
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.post(url, json=data) as rsp:
+                    result = rsp.status
+                    print(rsp)
+                    try:
+                        response_data = await rsp.json()
+                        print(response_data)
+                    except:
+                        print("Error unpacking JSON")
+                        response_data['error_code'] = ERR_CODE_INVALID_JSON
+                        response_data['message'] = "Invalid json"
+        except aiohttp.ClientTimeout:
+            print("TimeoutError")
+            response_data = {"rsp_type": RSP_TYPE_ERR, "message": "Timeout in device!", "code": 500}
+            result = False
         return result, response_data
-
-
-    # async def ext_websocket(self):
-    #     pass
-
 
 
     ########################
@@ -260,11 +254,12 @@ class DataConsumer(AsyncWebsocketConsumer):
 
 
 
+###
+#   Discoverer  - the websocket class for the discover & enumerate functionality
 
 class Discoverer(AsyncWebsocketConsumer):
 
-    
-
+    ## Websocket receive ##
     async def receive(self, text_data):
         
         data = json.loads(text_data)
@@ -273,9 +268,11 @@ class Discoverer(AsyncWebsocketConsumer):
         port = data['port']
 
         await self.send(json.dumps({"data": f"> Enumerating device at [{target}]", "code": 1}))
-    
+
+        await self.enumerate_device(target, port, ext)
 
 
+    ## Enumerate the device at target:port/extension
     async def enumerate_device(self, target, port, extension):
 
         data = {"cmd_type": 0,
@@ -285,26 +282,24 @@ class Discoverer(AsyncWebsocketConsumer):
                 "data_type": 0
                 }
 
-        rsp_t = 0
-        dev_name = 0
+        dev_name = ""
         periph_ids = []
         periph_num = 0
         device_id = 0
-        port=0
         peripherals = []
         
         url = "http://"
         url += target
         url += ":"
-        url += port
+        url += str(port)
+        if(extension[0] != "/"):
+            url+="/"
         url += extension
-
         fail = False
 
         try:
             async with aiohttp.ClientSession() as s:
-                async with s.post(target, json=data) as rsp:
-                    
+                async with s.post(url, json=data) as rsp:
                     status = rsp.status
                     await self.send(json.dumps({"data": "> Got response [" + str(status) + "]", "code": status}))
                     data = await rsp.json()
@@ -324,6 +319,13 @@ class Discoverer(AsyncWebsocketConsumer):
             await self.send(json.dumps({"data": "Error: Invalid URL!"}))
             fail = True
 
+        ## check device is not already enumerated...
+        if not fail:
+            if self.is_existing_device(device_id):
+                await self.send(json.dumps({"data": "Error: Device already exists! Try /update", "code": 508}))
+                fail = True
+               
+
         ## sanity checking the json type
         if not fail:
             p_info = {
@@ -335,44 +337,62 @@ class Discoverer(AsyncWebsocketConsumer):
             }
 
             for p in periph_ids:
-                p_info['param_id'] = p
-                p_model = {}
+                p_info['periph_id'] = p
+                p_model = {
+                    "param_ids": [],
+                    "name": 0,
+                    "param_num": 0,
+                    "periph_id": 0,
+                    'sleep_state': 0,
+                    'is_powered': True,
+                    "params": [],
+                }
 
                 try:
                     async with aiohttp.ClientSession() as s:
-                        async with s.post(target, json=p_info) as rsp:
+                        async with s.post(url, json=p_info) as rsp:
                             p_data = await rsp.json()
                             p_model["param_ids"] = p_data['param_ids']
                             p_model["name"] = p_data['name']
                             p_model["param_num"] = p_data['param_num']
-                            p_model["periph_id"] = p_data['periph_id']
-                            p_model['sleep_state'] = 0
-                            p_model['is_powered'] = True
-                            p_model["params": []]
-                            await self.send(json.dumps({"data": f"Enumerated: Peripheral {p_model['periph_name']} [{p_model['periph_id']}]- {p_model['param_num']} Parameters"}))
+                            p_model["periph_id"] = p_data['periph_id']    
                 except aiohttp.ClientResponseError:
-                    await self.send(json.dumps({"data": "Bad response from device! FAIL"}))
+                    await self.send(json.dumps({"data": "Bad response from device! FAIL", "code": 505}))
                     fail = True
                 except KeyError:
                     await self.send(json.dumps({"data": "Missing keys in response!", "code": 505}))
 
+
                 if not fail:
+                    await self.send(json.dumps({"data": f"Enumerated: Peripheral {p_model['name']} [{p_model['periph_id']}]- {p_model['param_num']} Parameters", "code": 201}))
+
                     prm_info = {
                         "cmd_type": 0,
                         "periph_id": p,
                         "param_id": 0,
                         "data": 0,
-                        "data_type": 0                
+                        "data_type": 0,
+                        "is_gettable": False,
+                        "is_settable": False,
+                        "is_action": False,            
                     }
 
-
                     for param in p_model['param_ids']:
-
+                        print("sending")
+                        print(param)
                         prm_info['param_id'] = param
                         try:
-                            prm_model = {}
+                            prm_model = {
+                                'name': "",
+                                'periph_id': 0,
+                                'param_id': 0,
+                                'param_type': 0,
+                                'methods': 0,
+                                'max_value': 0,
+                                'data_type': 0,
+                            }
                             async with aiohttp.ClientSession() as s:
-                                async with s.post(target, json=p_info) as rsp:
+                                async with s.post(url, json=prm_info) as rsp:
                                     prm_data = await rsp.json()  
                                     prm_model['name'] = prm_data['param_name']
                                     prm_model['periph_id'] = prm_data['periph_id']
@@ -383,29 +403,30 @@ class Discoverer(AsyncWebsocketConsumer):
                                     prm_model['data_type'] = prm_data['data_type']
 
                                     p_model['params'].append(prm_model)
-                                    await self.send(json.dumps({"data": f"Enumerated: [child {p_model['periph_id']}]Parameter: {prm_model['param_name']} [{prm_model['param_id']}]"}))
-
                         except aiohttp.ClientResponseError:
-                            await self.send(json.dumps({"data": "Bad response from device! FAIL"}))
+                            await self.send(json.dumps({"data": "Bad response from device! FAIL", "code": 505}))
                             fail = True
                         except KeyError:
                             await self.send(json.dumps({"data": "Missing keys in response!", "code": 505}))
                             fail = True
 
+                        if not fail:
+                            await self.send(json.dumps({"data": f"Enumerated: [child {p_model['periph_id']}]Parameter: {prm_model['name']} [{prm_model['param_id']}]", "code": 201}))
+
                 peripherals.append(p_model)
 
         if not fail:
-            await self.send(json.dumps({"data": "[+] Device succesfully enumerated", "code": 0}))
-            await self.send(json.dumps({"data": " # Engaging database... standby", "code": 0}))
+            await self.send(json.dumps({"data": " Device succesfully enumerated", "code": 200 }))
+            await self.send(json.dumps({"data": " Engaging database... standby", "code": 200 }))
         else:
-            await self.send(json.dumps({"data": "[-] Device enumeration failed :(", "code": 0}))
+            await self.send(json.dumps({"data": "Device enumeration failed :(", "code": 506 }))
         
 
         if not fail:
             ## log items to the database
 
             device_info = { 
-                            "dev_name": dev_name,
+                            "name": dev_name,
                             "periph_num": periph_num,
                             "dev_id": device_id,
                             "last_polled": datetime.now(),
@@ -421,7 +442,7 @@ class Discoverer(AsyncWebsocketConsumer):
             result = await self.build_new_device(device_info)
             
             if not result:
-                await self.send(json.dumps({"data": "- failed when creating new device", "code": 201}))
+                await self.send(json.dumps({"data": "- failed when creating new device", "code": 506 }))
                 fail = True
             else:
                 await self.send(json.dumps({"data": "- Created new Device [id]", "code": 201}))
@@ -433,27 +454,41 @@ class Discoverer(AsyncWebsocketConsumer):
                     result = await self.build_new_peripheral(item)
 
                     if not result:
-                        await self.send(json.dumps({"data": "- - failed when creating new peripheral", "code": 201}))
+                        await self.send(json.dumps({"data": "- - failed when creating new peripheral", "code": 506}))
                         fail = True
                     else:
                         await self.send(json.dumps({"data": "- - Created new Peripheral [id]", "code": 201}))
 
                     if not fail: 
-                        for p in item['peripherals']:
-                            p['is_gettable'] = (p['methods'] & API_GET_MASK)
-                            p['is_settable'] = (p['methods'] & API_SET_MASK)
-                            p['is_action'] = (p['methods'] & API_ACT_MASK)
-                            
+                        for p in item['params']:
+
+                            p['is_gettable'] = ((p['methods'] & API_GET_MASK) > 0)
+                            p['is_settable'] = ((p['methods'] & API_SET_MASK) > 0)
+                            p['is_action'] = ((p['methods'] & API_ACT_MASK) > 0)
+
                             result = await self.build_new_parameter(p)
 
                             if not result:
-                                await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 201}))
+                                await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 506}))
                                 fail = True
                             else:
-                                await self.send(json.dumps({"data": "- - - Created new Peripheral [id]", "code": 201}))
+                                await self.send(json.dumps({"data": "- - - Created new Parameter [id]", "code": 201}))
+
+            if not fail:
+                await self.send(json.dumps({"data": "Succesfully enumerated Device!", "code": 201}))
+            else:
+                await self.send(json.dumps({"data": "Failed to Enumerate Device :(", "code": 506 }))
+   
 
 
-
+    @database_sync_to_async
+    def is_existing_device(self, d_id):
+        exists = True
+        try:
+            D = models.Device.objects.get(device_id=d_id)
+        except ObjectDoesNotExist:
+            exists = False
+        return exists
 
 
     @database_sync_to_async
@@ -461,11 +496,10 @@ class Discoverer(AsyncWebsocketConsumer):
         success = True
         try:
             D = models.Device(
-                dev_name=d_info['dev_name'],
-                periph_num=d_info['periph_num'],
+                name=d_info['name'],
                 dev_id=d_info['dev_id'],
                 last_polled=d_info['last_polled'],
-                ip_addr=d_info['ip_addr'],
+                ip_address=d_info['ip_addr'],
                 api_port=d_info['api_port'],
                 cmd_url=d_info['cmd_url'],
                 num_peripherals=d_info['num_peripherals'],
@@ -475,7 +509,10 @@ class Discoverer(AsyncWebsocketConsumer):
             )
         except KeyError:
             print("Key Error!")
+            raise
             success = False
+        except:
+            raise
 
         if success:
             try:
@@ -492,10 +529,10 @@ class Discoverer(AsyncWebsocketConsumer):
             D = models.Device.objects.get(dev_id=p_info['device'])
 
             P = models.Peripheral(
+                periph_id=p_info['periph_id'],
                 device=D,
                 name=p_info['name'],
                 num_params=p_info['param_num'],
-                periph_type=p_info['periph_type'],
                 sleep_state=p_info['sleep_state'],
                 is_powered=p_info['is_powered'],
             )
@@ -503,15 +540,18 @@ class Discoverer(AsyncWebsocketConsumer):
         except KeyError:
             print("Key Error!")
             success = False
+            raise
         except ObjectDoesNotExist:
             print("Parent Object does not exist!")
             success = False
-            
+
+
         if success:
             try:
                 P.save()
             except:
                 success = False
+                raise
         return success
 
 
@@ -520,7 +560,7 @@ class Discoverer(AsyncWebsocketConsumer):
         success = True
 
         try:
-            Per = models.Peripheral.objects.get(periph_id=prm_info['peripheral'])
+            Per = models.Peripheral.objects.get(periph_id=prm_info['periph_id'])
 
             P = models.Parameter(
                 param_id=prm_info['param_id'],
@@ -528,23 +568,27 @@ class Discoverer(AsyncWebsocketConsumer):
                 name=prm_info['name'],
                 max_value=prm_info['max_value'],
                 data_type=prm_info['data_type'],
-                is_getable=prm_info['is_getable'],
-                is_setable=prm_info['is_setable'],
+                is_getable=prm_info['is_gettable'],
+                is_setable=prm_info['is_settable'],
                 is_action=prm_info['is_action'],
             )
 
         except KeyError:
             print("Key Error!")
             success = False
+            raise
         except ObjectDoesNotExist:
             print("Parent Object does not exist!")
             success = False
+        except:
+            raise
 
         if success:
             try:
                 P.save()
             except:
                 success = False
+                raise
         return success
 
 

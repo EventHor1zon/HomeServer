@@ -27,6 +27,21 @@ API_GET_MASK = 1
 API_SET_MASK = 2
 API_ACT_MASK = 4
 
+
+
+PTYPE_ADDR_LEDS = 0x01
+PTYPE_STD_LED = 0x02    
+PTYPE_ACCEL_SENSOR = 0x03
+PTYPE_ENVIRO_SENSOR = 0x04
+PTYPE_DISTANCE_SENSOR = 0x05
+PTYPE_POWER_SENSOR = 0x06
+PTYPE_ADC = 0x07                      #/** < adc periperal (on board) */
+PTYPE_IO = 0x08                       #/** < basic io function */
+PTYPE_DISPLAY = 0x09          #/** < display oled/led/epaper */
+PTYPE_COMMS = 0x0A            #/** < a comms/bluetooth/radio */
+PTYPE_NONE = 0xFF       #/** < blank **/
+
+
 base_keys = ["cmd_type", "periph_id", "param_id", "dev_id"]
 set_keys = ["cmd_type", "periph_id", "param_id", "dev_id", "data"]
 

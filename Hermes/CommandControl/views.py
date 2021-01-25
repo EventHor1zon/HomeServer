@@ -11,6 +11,7 @@ from Hermes.settings import DATABASES
 import os
 import subprocess
 import json
+from . import command_api as CA
 
 def get_uptime():
     p = subprocess.Popen(["uptime", "-p"], stdout=subprocess.PIPE)
@@ -83,6 +84,30 @@ class DiscoverView(View):
 
         context = {
             "devices": devices,
+        }
+
+        return HttpResponse(template.render(context, request))
+
+
+class LedControlView(View):
+
+    def __init__(self):
+        self.control_groups = []
+        super().__init__()
+
+    def get(self, request):
+        template = loader.get_template("CC/ledcontrol.html")
+        
+        led_periphs = Peripheral.objects.filter(periph_type=CA.PTYPE_ADDR_LEDS)
+        dev_ids = [x.device.dev_id for x in led_periphs if x.device.dev_id not in dev_ids]
+        led_devices = Device.objects.filter(dev_id__in=dev_ids)
+
+        devices = Device.objects.all()
+
+        context = {
+            "devices": devices,
+            "led_strips": led_periphs,
+            "led_devices": led_devices,
         }
 
         return HttpResponse(template.render(context, request))

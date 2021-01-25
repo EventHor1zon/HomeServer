@@ -1,4 +1,4 @@
-{% extends CC/base.html %}
+{% extends 'CC/base.html' %}
 
 
 {% block content %}
@@ -11,29 +11,86 @@
     <br>
     <br>
     <b>IP Address: </b>
-    <input class="ip_addr" style="width: 30%;"> </input>
+    <input class="ip_addr" id="tgt" style="width: 15%;"> </input>
+    <b>Port</b>
+    <input class="port" id="port" style="width: 10%"></input>
     <b>Extension: </b>
-    <input class="ext" style="width: 30%;"></input>
+    <input class="ext" id="ext" style="width: 10%;"></input>
     
-    <button style="border: solid; border-color: rgb(250, 115, 0); background-color: black; color: rgb(250, 115, 0);">
+    <button id="run" style="border: solid; border-color: rgb(250, 115, 0); background-color: black; color: rgb(250, 115, 0); align: right;">
      RUN
     </button>
     <br>
-
+    <p><br></p>
     <div class="console" id="box">
         <i> user@Discover:/~ </i>
     </div>
 
     <script>
 
+        function ValidateIPaddress(ipaddress) {  
+            if (/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ipaddress)) {  
+                return (true)
+            } else {
+                return (false)
+            }
+        }
+
+        var log_area = document.getElementById('box');
+        var run_button = document.getElementById('run');
+
+
+
         const channel = new WebSocket(
             'ws://'
             + window.location.host
-            + 'ws/discover'
+            + '/ws/discover/'
         );
 
         channel.onmessage = function(e) {
-            const data = JSON.parse(e.data)
+            const data = JSON.parse(e.data);
+            console.log(data);
+            var output = "";
+
+            if(data['code'] > 200 && data['code'] < 300) {
+                output += "<i>[<b style='color: green;'>+</b>] ";
+            }
+            else if (data['code'] > 400) {
+                output += "<i>[<b style='color: red;'>!</b>] ";
+            }
+            else {
+                output += "<i><b style='color: rgb(250, 115, 0);'>~</b> ";
+            }
+
+            output += data['data'];
+            output += "</i><br>";
+
+            log_area.innerHTML += output;
+        }
+
+
+        run_button.onclick = function(e) {
+            var tgt = document.getElementById('tgt').value;
+            var ext = document.getElementById('ext').value;
+            var prt = document.getElementById('port').value;
+            if (tgt == "" || ext == "" || prt == "") {
+                log_area.innerHTML += "<br><b style='color: red;'>Error</b>: fill in all the boxes!";
+            } 
+            else if (isNaN(prt)) {
+                log_area.innerHTML += "<br><b style='color: red;'>Error</b>: Port must be a number";
+            } 
+            else if (!(ValidateIPaddress(tgt))) {
+                log_area.innerHTML += "<br><b style='color: red;'>Error</b>: Invalid IPv4 address";
+            }
+            else {
+                var port_n = parseInt(prt, 10); 
+
+                channel.send(JSON.stringify({
+                    "ip_addr": tgt,
+                    "extension": ext,
+                    "port": port_n,
+                }));
+            }
         }
 
     </script>

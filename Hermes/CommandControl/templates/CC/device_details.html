@@ -2,8 +2,9 @@
 
 {% block content %}
 <div id="center" style="color: darkorange">
-    <img src="{{ device.image.url }}" alt="image" height="200px" width="240px" align="right">
-   
+    {% if device.image %}
+        <img src="{{ device.image.url }}" alt="image" height="200px" width="240px" align="right">
+   {% endif %}
     <h3> {{ device.name }} </h3>
     <h3> {{ device.dev_type }} </h3>
     <h3> Peripherals: {{ device.num_peripherals }} </h3>
