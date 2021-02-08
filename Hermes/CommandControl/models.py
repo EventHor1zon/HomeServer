@@ -45,6 +45,7 @@ class Parameter(models.Model):
     is_setable = models.BooleanField(default=False)
     is_action = models.BooleanField(default=False)
     last_value = models.IntegerField(default=0)
+    last_value_string = models.CharField(default="", max_length=500)
     units = models.TextField(max_length=20)
 
 

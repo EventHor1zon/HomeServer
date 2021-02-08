@@ -55,7 +55,10 @@ class DataConsumer(AsyncWebsocketConsumer):
         else:
             result, response = await self.ext_http_post(url, rq)
             await self.send(json.dumps(response))
-            await self.update_peripheral(response)
+            if response['rsp_type'] == RSP_TYPE_DATA:
+                param = await self.get_param_object(data['dev_id'], response['periph_id'], response['param_id'])
+                if param != None:
+                    await self.update_parameter(response['data'], param)
 
     ########################
     #   relay_request
@@ -95,14 +98,14 @@ class DataConsumer(AsyncWebsocketConsumer):
     #   to relay & target or error response
     ########################
     async def build_request(self, data):
-        print("Building request")
+        print("Building request from:")
+        print(data)
         device_object = None
         param_object = None
         url = ""
         ret = ()
         request = {}
         error_rsp = { 'rsp_type': RSP_TYPE_ERR, 'error_code':0 }
-    
         fail = False
 
         if not check_basic_keys(data):
@@ -122,7 +125,7 @@ class DataConsumer(AsyncWebsocketConsumer):
                     error_rsp['message'] = "Invalid periph id"
                     error_rsp['error_code'] = ERR_CODE_INVALID_PERIPH_ID
                 else:
-                    fail = await self.is_invalid_param(int(data['periph_id']), int(data['param_id']))
+                    fail = await self.is_invalid_param(int(data['dev_id']), int(data['periph_id']), int(data['param_id']))
                     if fail:
                         error_rsp['message'] = "Invalid param id"
                         error_rsp['error_code'] = ERR_CODE_INVALID_PARAM_ID
@@ -130,24 +133,32 @@ class DataConsumer(AsyncWebsocketConsumer):
         if not fail:
 
             cmd_type = CommandTypeToInteger(data['cmd_type'])
-            dev_id = int(data['dev_id'])
-            periph_id = int(data['periph_id'])
-            param_id = int(data['param_id'])
-            data = int(data['data'])
-            param_object = await self.get_param_object(dev_id, periph_id, param_id)
-            if param_object == None:
-                print("Failed in param database lookup!")
-                error_rsp['message'] = "Invalid ID for command"
-                error_rsp['error_code'] = ERR_CODE_INVALID_CMD_PARAMS
+            try:
+                dev_id = int(data['dev_id'])
+                periph_id = int(data['periph_id'])
+                param_id = int(data['param_id'])
+                data_val = int(data['data'])
+            except KeyError as e:
+                print("error: missing keys")
+                print(e)
+                error_rsp['message'] = "Missing keys"
+                error_rsp['error_code'] = ERR_CODE_INVALID_JSON
                 fail = True
+            if not fail:
+                param_object = await self.get_param_object(dev_id, periph_id, param_id)
+                if param_object == None:
+                    print("Failed in param database lookup!")
+                    error_rsp['message'] = "Invalid ID for command"
+                    error_rsp['error_code'] = ERR_CODE_INVALID_CMD_PARAMS
+                    fail = True
+            if not fail:
+                device_object = await self.get_device_object(dev_id)
 
-            device_object = await self.get_device_object(dev_id)
-
-            if device_object == None:
-                print("Failed in device database lookup!")
-                error_rsp['message'] = "Invalid ID for command"
-                error_rsp['error_code'] = ERR_CODE_INVALID_CMD_PARAMS
-                fail = True
+                if device_object == None:
+                    print("Failed in device database lookup!")
+                    error_rsp['message'] = "Invalid ID for command"
+                    error_rsp['error_code'] = ERR_CODE_INVALID_CMD_PARAMS
+                    fail = True
         
         if not fail:
 
@@ -155,11 +166,12 @@ class DataConsumer(AsyncWebsocketConsumer):
                 error_rsp['message'] = "Invalid ID for command"
                 error_rsp['error_code'] = ERR_CODE_INVALID_CMD_PARAMS
                 fail = True
-            elif cmd_type == CMD_TYPE_SET and not check_set_keys(request):
+            elif cmd_type == CMD_TYPE_SET and not check_set_keys(data):
+                print("here be errors")
                 error_rsp['message'] = "Missing keys"
                 error_rsp['error_code'] = ERR_CODE_MISSING_FIELD
                 fail = True
-            elif cmd_type == CMD_TYPE_SET and data > param_object.max_valid:
+            elif cmd_type == CMD_TYPE_SET and data_val > param_object.max_value:
                 error_rsp['message'] = "Value greater than max!"
                 error_rsp['error_code'] = ERR_CODE_INVALID_CMD_PARAMS
                 fail = True
@@ -173,7 +185,7 @@ class DataConsumer(AsyncWebsocketConsumer):
 
             if cmd_type == CMD_TYPE_SET:
                 request['data_type'] = param_object.data_type
-                request['data'] = data
+                request['data'] = data_val
 
             else:
                 request['data'] = 0
@@ -198,12 +210,30 @@ class DataConsumer(AsyncWebsocketConsumer):
         print(ret)
         return ret
 
-
+    @database_sync_to_async
+    def update_parameter(self, data, param_object):
+        if type(data) == str and param_object.data_type != PARAMTYPE_STRING:
+            d = int(data)
+        else:
+            d = data
+        try:
+            if param_object != None and param_object.last_value != d:
+                if param_object.data_type == PARAMTYPE_STRING:
+                    param_object.last_value_string = d
+                else:
+                    param_object.last_value = d
+                param_object.save()
+                print("param value updated")
+            else:
+                print("Not updating")
+        except KeyError:
+            print("Urk, error updating parameter value")
+            pass
 
     @database_sync_to_async
     def get_param_object(self, dev_id, periph_id, param_id):
         try:
-            param = models.Parameter.objects.filter(peripheral__id=periph_id).filter(peripheral__device__id=dev_id).get(id=periph_id)
+            param = models.Parameter.objects.filter(peripheral__periph_id=periph_id).filter(peripheral__device__dev_id=dev_id).get(param_id=param_id)
             return param
         except ObjectDoesNotExist:
             print("Invalid id")
@@ -212,7 +242,7 @@ class DataConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_device_object(self, dev_id):
         try:
-            dev = models.Device.objects.get(id=dev_id)
+            dev = models.Device.objects.get(dev_id=dev_id)
             return dev
         except ObjectDoesNotExist:
             print("Invalid id")
@@ -224,7 +254,7 @@ class DataConsumer(AsyncWebsocketConsumer):
             return False
         else:
             try:
-                obj = models.Device.objects.get(id=dev_id)
+                obj = models.Device.objects.get(dev_id=dev_id)
                 return False
             except ObjectDoesNotExist:
                 return True
@@ -235,18 +265,18 @@ class DataConsumer(AsyncWebsocketConsumer):
             return False
         else:
             try:
-                obj = models.Peripheral.objects.filter(device__id=dev_id).get(id=p_id)
+                obj = models.Peripheral.objects.filter(device__dev_id=dev_id).get(periph_id=p_id)
                 return False
             except ObjectDoesNotExist:
                 return True
             
     @database_sync_to_async
-    def is_invalid_param(self, p_id, prm_id):
+    def is_invalid_param(self, d_id, p_id, prm_id):
         if prm_id == 0:
             return False
         else:
             try:
-                obj = models.Parameter.objects.filter(peripheral__id=p_id).get(id=prm_id)
+                obj = models.Parameter.objects.filter(peripheral__periph_id=p_id).filter(peripheral__device__dev_id=d_id).get(param_id=prm_id)
                 return False
             except ObjectDoesNotExist:
                 return True
@@ -319,11 +349,11 @@ class Discoverer(AsyncWebsocketConsumer):
             await self.send(json.dumps({"data": "Error: Invalid URL!"}))
             fail = True
 
-        ## check device is not already enumerated...
-        if not fail:
-            if self.is_existing_device(device_id):
-                await self.send(json.dumps({"data": "Error: Device already exists! Try /update", "code": 508}))
-                fail = True
+        # ## check device is not already enumerated...
+        # if not fail:
+        #     if self.is_existing_device(device_id):
+        #         await self.send(json.dumps({"data": "Error: Device already exists! Try /update", "code": 508}))
+        #         fail = True
                
 
         ## sanity checking the json type
@@ -343,6 +373,7 @@ class Discoverer(AsyncWebsocketConsumer):
                     "name": 0,
                     "param_num": 0,
                     "periph_id": 0,
+                    "periph_type": 0,
                     'sleep_state': 0,
                     'is_powered': True,
                     "params": [],
@@ -356,6 +387,7 @@ class Discoverer(AsyncWebsocketConsumer):
                             p_model["name"] = p_data['name']
                             p_model["param_num"] = p_data['param_num']
                             p_model["periph_id"] = p_data['periph_id']    
+                            p_model["periph_type"] = p_data["periph_type"]
                 except aiohttp.ClientResponseError:
                     await self.send(json.dumps({"data": "Bad response from device! FAIL", "code": 505}))
                     fail = True
@@ -397,7 +429,7 @@ class Discoverer(AsyncWebsocketConsumer):
                                     prm_model['name'] = prm_data['param_name']
                                     prm_model['periph_id'] = prm_data['periph_id']
                                     prm_model['param_id'] = prm_data['param_id']
-                                    prm_model['param_type'] = prm_data['param_type']
+                                    prm_model['param_type'] = 0 #prm_data['param_type']
                                     prm_model['methods'] = prm_data['methods']
                                     prm_model['max_value'] = prm_data['param_max']
                                     prm_model['data_type'] = prm_data['data_type']
@@ -466,7 +498,7 @@ class Discoverer(AsyncWebsocketConsumer):
                             p['is_settable'] = ((p['methods'] & API_SET_MASK) > 0)
                             p['is_action'] = ((p['methods'] & API_ACT_MASK) > 0)
 
-                            result = await self.build_new_parameter(p)
+                            result = await self.build_new_parameter(p, item['device'])
 
                             if not result:
                                 await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 506}))
@@ -483,10 +515,11 @@ class Discoverer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def is_existing_device(self, d_id):
-        exists = True
+        exists = False
         try:
-            D = models.Device.objects.get(device_id=d_id)
-        except ObjectDoesNotExist:
+            D = models.Device.objects.get(dev_id=d_id)
+            exists = True
+        except:
             exists = False
         return exists
 
@@ -530,6 +563,7 @@ class Discoverer(AsyncWebsocketConsumer):
 
             P = models.Peripheral(
                 periph_id=p_info['periph_id'],
+                periph_type=p_info['periph_type'],
                 device=D,
                 name=p_info['name'],
                 num_params=p_info['param_num'],
@@ -556,11 +590,11 @@ class Discoverer(AsyncWebsocketConsumer):
 
 
     @database_sync_to_async
-    def build_new_parameter(self, prm_info):
+    def build_new_parameter(self, prm_info, dev_id):
         success = True
 
         try:
-            Per = models.Peripheral.objects.get(periph_id=prm_info['periph_id'])
+            Per = models.Peripheral.objects.filter(device__dev_id=dev_id).get(periph_id=prm_info['periph_id'])
 
             P = models.Parameter(
                 param_id=prm_info['param_id'],

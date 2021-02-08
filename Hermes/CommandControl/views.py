@@ -99,7 +99,7 @@ class LedControlView(View):
         template = loader.get_template("CC/ledcontrol.html")
         
         led_periphs = Peripheral.objects.filter(periph_type=CA.PTYPE_ADDR_LEDS)
-        dev_ids = [x.device.dev_id for x in led_periphs if x.device.dev_id not in dev_ids]
+        dev_ids = [x.device.dev_id for x in led_periphs]
         led_devices = Device.objects.filter(dev_id__in=dev_ids)
 
         devices = Device.objects.all()

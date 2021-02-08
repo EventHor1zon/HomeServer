@@ -3,6 +3,12 @@ body {
     background-color: black;
 }
 
+input[type="range"] {
+    position: absolute;
+    top: 40%;
+    transform: rotate(270deg);
+}
+
 .navbar {
     overflow: hidden;
     grid-column-start: 1;
@@ -103,10 +109,11 @@ body {
 .center th,
 td {
     padding-right: 40px;
+    padding-left: 20px;
     padding-top: 15px;
-    text-align: center;
     border: none solid solid none;
     border-color: rgb(250, 115, 0);
+    text-align: left;
 }
 
 #table_hl_row:hover {
@@ -158,6 +165,13 @@ td {
 }
 
 .get_val {
+    padding-top: 1%;
+    background-color: black;
+    color: rgb(250, 115, 0);
+    align-content: center;
+}
+
+.set_val {
     padding-top: 1%;
     background-color: black;
     color: rgb(250, 115, 0);

@@ -28,6 +28,18 @@ API_SET_MASK = 2
 API_ACT_MASK = 4
 
 
+PARAMTYPE_NONE = 0
+PARAMTYPE_INT8 = 1
+PARAMTYPE_UINT8 = 1
+PARAMTYPE_INT16 = 2
+PARAMTYPE_UINT16 = 2
+PARAMTYPE_INT32 = 4
+PARAMTYPE_UINT32 = 4
+PARAMTYPE_FLOAT = 5
+PARAMTYPE_DOUBLE = 8
+PARAMTYPE_STRING = 0x0A
+PARAMTYPE_BOOL = 0x0B
+PARAMTYPE_INVALID = 0xFF
 
 PTYPE_ADDR_LEDS = 0x01
 PTYPE_STD_LED = 0x02    
@@ -65,8 +77,10 @@ def CommandTypeToInteger(cmd):
 
 
 def check_set_keys(request):
+    print(request)
     for key in set_keys:
         if key not in request.keys():
+            print("missing " + key)
             return False
     return True
 

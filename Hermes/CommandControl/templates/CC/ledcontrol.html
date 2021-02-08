@@ -3,30 +3,37 @@
 
 {% block content %}
 
-<div class="center">
-    <h2> LED Control </h2>
-    <p> A set of controls for group actions and general ease of clicking </p>
+<div style="color: antiquewhite; width: 100%; height: 100%; display: grid; grid_template_rows: 1fr; grid_template_columns: 1fr 1fr;">
+    <div style="grid-column-start: 1; grid-column-end: 2; align: left;">
+        <h2> LED Control </h2>
+        <p> A set of controls for group actions and general ease of clicking </p>
 
-    <b>Commands</b>
-    <table>
-    <tr>
-        <th> Led Strip </th>
-        <th> Colour </th>
-        <th> Select </th>
-    </tr>
-    {% for strip in led_peripheral %}
+        <b>Commands</b>
+        <table>
         <tr>
-            <td> {{ strip.periph_name }} </td>
-            <td><input>Colour</input>   </td>
-            <td><intput type="checkbox">Select </td>
+            <th> Led Strip </th>
+            <th> Colour </th>
+            <th> Select </th>
         </tr>
-    {% endfor %}
-    </table>
+        {% for strip in led_strips %}
+            <tr>
+                <td> {{ strip.name }} </td>
+                <td> <p> Placeholder </td>
+                <td><input type="checkbox"></td>
+            </tr>
+        {% endfor %}
+        </table>
 
-    <button style="align: right; background-color: black; color: rgb(250, 115, 0)">Go</button>
+        <button style="align: right; background-color: black; color: rgb(250, 115, 0)">Go</button>
+    </div>
+    <div style="grid-column-start: 2; grid-column-end: 3; align: right;">
+
+        <input type="range" max="255" style="background-color: red;">Red</input>
+        <input type="range" max="255" style="background-color: green;">Green</input>
+        <input type="range" max="255" style="background-color: blue;">Blue</input>
 
 
-
+    </div>
 </div>
 
 
