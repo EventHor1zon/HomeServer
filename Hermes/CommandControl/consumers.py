@@ -55,10 +55,18 @@ class DataConsumer(AsyncWebsocketConsumer):
         else:
             result, response = await self.ext_http_post(url, rq)
             await self.send(json.dumps(response))
+            print(json.dumps(response))
+            print(response['rsp_type'])
+            print(RSP_TYPE_DATA)
+            print(RSP_TYPE_ERR)
             if response['rsp_type'] == RSP_TYPE_DATA:
+                print("Getting param")
                 param = await self.get_param_object(data['dev_id'], response['periph_id'], response['param_id'])
                 if param != None:
+                    print("updating")
                     await self.update_parameter(response['data'], param)
+            elif response['rsp_type'] == RSP_TYPE_ERR:
+                print("Got an error response!")
 
     ########################
     #   relay_request
