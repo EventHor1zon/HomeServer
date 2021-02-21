@@ -221,13 +221,19 @@ class DataConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def update_parameter(self, data, param_object):
         if type(data) == str and param_object.data_type != PARAMTYPE_STRING:
-            d = int(data)
+            try:
+                d = int(data)
+            except ValueError:
+                try:
+                    d = float(data)
+                except:
+                    print("Error in converting value type: " + type(d))
         else:
             d = data
         try:
             if param_object != None and param_object.last_value != d:
                 if param_object.data_type == PARAMTYPE_STRING:
-                    param_object.last_value_string = d
+                    param_object.last_value_string = str(d)
                 else:
                     param_object.last_value = d
                 param_object.save()
@@ -288,8 +294,6 @@ class DataConsumer(AsyncWebsocketConsumer):
                 return False
             except ObjectDoesNotExist:
                 return True
-
-
 
 
 ###
@@ -414,7 +418,8 @@ class Discoverer(AsyncWebsocketConsumer):
                         "data_type": 0,
                         "is_gettable": False,
                         "is_settable": False,
-                        "is_action": False,            
+                        "is_action": False,
+                        "is_streamable": False,
                     }
 
                     for param in p_model['param_ids']:
@@ -505,6 +510,7 @@ class Discoverer(AsyncWebsocketConsumer):
                             p['is_gettable'] = ((p['methods'] & API_GET_MASK) > 0)
                             p['is_settable'] = ((p['methods'] & API_SET_MASK) > 0)
                             p['is_action'] = ((p['methods'] & API_ACT_MASK) > 0)
+                            p['is_streamable'] = ((p['methods'] & API_STREAM_MASK) > 0)
 
                             result = await self.build_new_parameter(p, item['device'])
 
@@ -613,6 +619,7 @@ class Discoverer(AsyncWebsocketConsumer):
                 is_getable=prm_info['is_gettable'],
                 is_setable=prm_info['is_settable'],
                 is_action=prm_info['is_action'],
+                is_streamable=prm_info['is_streamable']
             )
 
         except KeyError:
@@ -636,7 +643,34 @@ class Discoverer(AsyncWebsocketConsumer):
 
 
 
+class Streamer(AsyncWebsocketConsumer):
 
+    """ plan for streamer... 
+        - want client to select streaming parameters then open up a websocket to this page
+        - start a websocket server
+        - send http request to the device requesting a stream
+        - wait for ok response 
+        - wait for the websocket connection from device
+        - perform handshake, etc, etc
+        - add client to a channel-layer
+        - ideally route traffic as low-effort as possible between device & client
+        - deal with cleanup, etc.
+    """
+
+    async def receive(self, text_data=None, bytes_data=None):
+        print("got message")
+        if bytes_data is not None:
+            bytestring = bytes_data.decode("utf-8")
+            print(bytestring)
+        elif text_data is not None:
+            print(text_data)
+        else:
+            print("no data")
+
+        return super().receive(text_data=text_data, bytes_data=bytes_data)
+
+    async def send(self, text_data=None, bytes_data=None, close=False):
+        return super().send(text_data=text_data, bytes_data=bytes_data, close=close)
 
 
 

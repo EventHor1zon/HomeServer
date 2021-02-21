@@ -33,6 +33,7 @@ def index(request):
     return HttpResponse(template.render(context, request))
 
 
+
 class DeviceView(DetailView):
 
     template_name = "CC/device_details.html"

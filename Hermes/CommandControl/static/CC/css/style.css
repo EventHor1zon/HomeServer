@@ -139,6 +139,11 @@ td {
     background-color: rgb(5, 5, 5);
     padding: 1%;
     font-size: 18px;
+    scrollbar-width: 5px;
+    scrollbar-track-color: black;
+    scrollbar-color: black;
+    scrollbar-highlight-color: rgb(250, 115, 0);
+    overflow: scroll;
 }
 
 .subtable_header {
@@ -193,7 +198,7 @@ td {
 
 .main {
     display: grid;
-    grid-template-rows: 1fr 1fr 10fr 2fr;
+    grid-template-rows: 1fr 1fr 10fr 1fr;
     grid-template-columns: 1fr 5fr 1fr;
     grid-column-gap: 10px;
     grid-row-gap: 2px;
