@@ -3,12 +3,6 @@ body {
     background-color: black;
 }
 
-input[type="range"] {
-    position: absolute;
-    top: 40%;
-    transform: rotate(270deg);
-}
-
 .navbar {
     overflow: hidden;
     grid-column-start: 1;
@@ -139,11 +133,15 @@ td {
     background-color: rgb(5, 5, 5);
     padding: 1%;
     font-size: 18px;
+    scrollbar-darkshadow-color: black;
     scrollbar-width: 5px;
+    scrollbar-base-color: black;
     scrollbar-track-color: black;
     scrollbar-color: black;
     scrollbar-highlight-color: rgb(250, 115, 0);
-    overflow: scroll;
+    scrollbar-face-color: black;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .subtable_header {
@@ -194,6 +192,63 @@ td {
     font: smaller;
     overflow: auto;
     scroll-behavior: auto;
+}
+
+.rslider {
+    -webkit-appearance: none;
+    width: 80%;
+    height: 20px;
+    background-color: red;
+    opacity: 0.1;
+    -webkit-transition: .2s;
+    transition: opacity .2s;
+}
+
+.rslider:hover {
+    opacity: 0.5;
+}
+
+.gslider {
+    -webkit-appearance: none;
+    width: 80%;
+    height: 20px;
+    background-color: green;
+    opacity: 0.1;
+    -webkit-transition: .2s;
+    transition: opacity .2s;
+}
+
+.gslider:hover {
+    opacity: 0.5;
+}
+
+.bslider {
+    -webkit-appearance: none;
+    width: 80%;
+    height: 20px;
+    background-color: blue;
+    opacity: 0.1;
+    -webkit-transition: .2s;
+    transition: opacity .2s;
+}
+
+.bslider:hover {
+    opacity: 0.5;
+}
+
+
+/** yoinked from the internets **/
+
+.circleBase {
+    border-radius: 50%;
+    padding: 50px;
+}
+
+.type1 {
+    width: 80px;
+    height: 80px;
+    background: black;
+    border: 5px solid antiquewhite;
 }
 
 .main {

@@ -1,0 +1,38 @@
+{% extends 'CC/base.html' %}
+
+
+
+{% block content %}
+
+<div id="center">
+
+<!-- build a table of streamable devices, periphs, params -->
+<h2> Streaming Interface v0.1</h2>
+
+<p> Pick parameters to stream - currently only a single peripheral is supported </p>
+
+
+    <div class="subtable" style="grid-template-columns: 2fr 1fr;">
+
+        <div class="subtable_header"> Parameter </div>
+        <div class="subtable_header"> Select </div>
+
+        {% for param in stream_params %}
+            <div class="subtable_element">{{ param.name }}</div>
+            <div class="subtable_element"><input type="checkbox"></div>
+        {% endfor %}
+
+    </div>
+
+
+
+
+
+
+
+
+
+</div>
+
+
+{% endblock content %}

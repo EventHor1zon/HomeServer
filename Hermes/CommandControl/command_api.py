@@ -1,14 +1,19 @@
 
 
+ERR_CODE_RSP_INVJSON = 0x30
+ERR_CODE_HTTP_TIMEOUT = 0x31
+ERR_CODE_INV_URL = 0x32
 ERR_CODE_INVALID_RESPONSE_LEN = 0x1e
 ERR_CODE_INVALID_JSON = 0x1f
-
 ERR_CODE_MISSING_FIELD = 0x0d
 ERR_CODE_INVALID_CMD_PARAMS = 0x0f
-
 ERR_CODE_INVALID_DEV_ID = 0x2a
 ERR_CODE_INVALID_PERIPH_ID = 0x2b
 ERR_CODE_INVALID_PARAM_ID = 0x2c
+ERR_CODE_INVALID_REQUEST = 0x2e
+ERR_CODE_INVALID_DATA_VALUE = 0x2f
+ERR_CODE_INVALID_DATA_TYPE = 0x29
+ERR_CODE_INVALID_STREAM_RATE = 0x28
 
 CMD_TYPE_INFO = 0x00
 CMD_TYPE_GET = 0x01
@@ -54,9 +59,26 @@ PTYPE_COMMS = 0x0A            #/** < a comms/bluetooth/radio */
 PTYPE_NONE = 0xFF       #/** < blank **/
 
 
-base_keys = ["cmd_type", "periph_id", "param_id", "dev_id"]
-set_keys = ["cmd_type", "periph_id", "param_id", "dev_id", "data"]
+base_keys = ["periph_id", "param_id"]
+info_keys = base_keys.append("dev_id")
+get_keys = base_keys.append("dev_id")
+act_keys = base_keys.append("dev_id")
+data_keys = base_keys.extend(["data", "data_t"])
+set_keys = base_keys.extend(["data", "data_t"]) # check this data t is needed
+stream_keys =  ["dev_id", "periph_id", "param_ids", "rate", "ext"]
+err_keys = ["error_code", "msg"]
 
+API_WEBSOCKET_RATE_1HZ = 0
+API_WEBSOCKET_RATE_5HZ = 1
+API_WEBSOCKET_RATE_10HZ = 2
+
+API_WEBSOCKET_MAX_RATE = API_WEBSOCKET_RATE_10HZ
+
+API_WEBSOCKET_RATES = [
+    API_WEBSOCKET_RATE_1HZ,
+    API_WEBSOCKET_RATE_5HZ,
+    API_WEBSOCKET_RATE_10HZ,
+]
 
 
 def CommandTypeToInteger(cmd):
@@ -76,6 +98,50 @@ def CommandTypeToInteger(cmd):
     return retval
 
 
+
+## @brief: Checks the request json dictionary for the correct keys 
+#  @param cmd_t the command type as an integer
+#  @param req   the request dictionary
+def check_request_keys(cmd_t, req):
+    if cmd_t == CMD_TYPE_INFO:
+        keys = info_keys
+    elif cmd_t == CMD_TYPE_GET:
+        keys = get_keys
+    elif cmd_t == CMD_TYPE_SET:
+        keys = set_keys
+    elif cmd_t == CMD_TYPE_ACTION:
+        keys = act_keys
+    elif cmd_t == CMD_TYPE_STREAM:
+        keys = stream_keys
+    else:
+        return False
+    
+    for key in keys:
+        if key not in req.keys():
+            print("missing " + key)
+            return False
+    return True
+
+def check_response_keys(rsp_t, rsp):
+    if rsp_t == RSP_TYPE_INFO:
+        keys = base_keys
+    elif rsp_t == RSP_TYPE_DATA:
+        keys = data_keys
+    elif rsp_t == RSP_TYPE_ERR:
+        keys = err_keys
+    elif rsp_t == RSP_TYPE_OK:
+        return True
+    else:
+        return False
+    
+    for key in keys:
+        if key not in rsp.keys():
+            print("missing " + key)
+            return False
+    return True
+ 
+
+
 def check_set_keys(request):
     print(request)
     for key in set_keys:
@@ -85,6 +151,11 @@ def check_set_keys(request):
     return True
 
 
+def check_info_keys(req):
+    for key in info_keys:
+        if key not in req.keys():
+            return False
+    return True
 
 def check_basic_keys(request):
     for key in base_keys:

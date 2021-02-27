@@ -112,3 +112,25 @@ class LedControlView(View):
         }
 
         return HttpResponse(template.render(context, request))
+
+
+class StreamView(View):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+
+    def get(self, request):
+        template = loader.get_template("CC/stream.html")
+
+        stream_params = Parameter.objects.filter(is_streamable=True)
+        stream_periphs = list(set([x.peripheral for x in stream_params]))
+        stream_devices = list(set([x.peripheral.device for x in stream_params]))
+
+        context = {
+            "stream_params": stream_params,
+            "stream_periphs": stream_periphs,
+            "stream_devices": stream_devices,
+        }
+
+        return HttpResponse(template.render(context, request))

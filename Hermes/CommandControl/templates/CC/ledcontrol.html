@@ -1,39 +1,99 @@
-{% extends 'CC/base.html' %}
+{% extends 'CC/base.html' %} {% block content %}
 
-
-{% block content %}
-
-<div style="color: antiquewhite; width: 100%; height: 100%; display: grid; grid_template_rows: 1fr; grid_template_columns: 1fr 1fr;">
-    <div style="grid-column-start: 1; grid-column-end: 2; align: left;">
+<div style="color: antiquewhite; width: 100%; height: 100%; display: grid; grid-template-rows: 1fr; grid-template-columns: 1fr 2fr 1fr;">
+    <div style="grid-column-start: 1; grid-column-end: 2;">
         <h2> LED Control </h2>
         <p> A set of controls for group actions and general ease of clicking </p>
 
         <b>Commands</b>
         <table>
-        <tr>
-            <th> Led Strip </th>
-            <th> Colour </th>
-            <th> Select </th>
-        </tr>
-        {% for strip in led_strips %}
+            <tr>
+                <th> Led Strip </th>
+                <th> Colour </th>
+                <th> Select </th>
+            </tr>
+            {% for strip in led_strips %}
             <tr>
                 <td> {{ strip.name }} </td>
-                <td> <p> Placeholder </td>
+                <td>
+                    <p> Placeholder </td>
                 <td><input type="checkbox"></td>
             </tr>
-        {% endfor %}
+            {% endfor %}
         </table>
 
-        <button style="align: right; background-color: black; color: rgb(250, 115, 0)">Go</button>
     </div>
-    <div style="grid-column-start: 2; grid-column-end: 3; align: right;">
+    <div style="grid-column-start: 2; grid-column-end: 3; padding-top: 40%; padding-left: 10px; padding-right: 10px;">
 
-        <input type="range" max="255" style="background-color: red;">Red</input>
-        <input type="range" max="255" style="background-color: green;">Green</input>
-        <input type="range" max="255" style="background-color: blue;">Blue</input>
-
+        <p><b id="rVal">0</b>
+            <input id="redSelect" class="rslider" type="range" max="255" value="0" style="background-color: red;" />
+        </p>
+        <p><b id="gVal">0</b>
+            <input id="greenSelect" class="gslider" type="range" max="255" value="0" style="background-color: green;" />
+        </p>
+        <p><b id="bVal">0</b>
+            <input id="blueSelect" class="bslider" type="range" max="255" value="0" style="background-color: blue;" />
+        </p>
+        <button style="background-color: black; color: rgb(250, 115, 0); width: 30%; align-self: center;">Update</button>
+    </div>
+    <div class="circleBase type1" id="col_display">
 
     </div>
+    <script>
+        var rSlider = document.getElementById("redSelect");
+        var gSlider = document.getElementById("greenSelect");
+        var bSlider = document.getElementById("blueSelect");
+        var rv = document.getElementById("rVal");
+        var gv = document.getElementById("gVal");
+        var bv = document.getElementById("bVal");
+        var col_display = document.getElementById("col_display");
+        var last_red = 0;
+        var last_green = 0;
+        var last_blue = 0;
+
+        function convert(integer) {
+            var str = Number(integer).toString(16);
+            return str.length == 1 ? "0" + str : str;
+        };
+
+        function make_colour() {
+
+            var colour = 0;
+            var r_hex = convert(last_red);
+            var g_hex = convert(last_green);
+            var b_hex = convert(last_blue);
+
+            var colstring = "#" + r_hex + g_hex + b_hex;
+            console.log(colstring);
+
+            return colstring;
+        }
+
+        function update_sample() {
+            var newcol = make_colour();
+            col_display.style.backgroundColor = newcol;
+        }
+
+
+        rSlider.oninput = function() {
+            rv.innerHTML = this.value;
+            last_red = this.value;
+            update_sample();
+        }
+
+        gSlider.oninput = function() {
+            gv.innerHTML = this.value;
+            last_green = this.value;
+            update_sample();
+        }
+
+        bSlider.oninput = function() {
+            bv.innerHTML = this.value;
+            last_blue = this.value;
+            update_sample();
+        }
+    </script>
+</div>
 </div>
 
 
