@@ -83,11 +83,11 @@ async def ext_http_post(url: str, data: dict):
                 debug_print(response_data)
                 result = HTTP_RSP_AQUIRED
     except json.JSONDecodeError:
-        result = ERR_CODE_RSP_INVJSON
+        result = ERR_CODE_INVALID_RSP_JSON
     except aiohttp.ClientTimeout:
         result = ERR_CODE_HTTP_TIMEOUT
     except aiohttp.InvalidURL:
-        result = ERR_CODE_INV_URL
+        result = ERR_CODE_INVALID_URL
 
     return result, response_data
 
@@ -418,10 +418,24 @@ class LedCtrlConsumer(AsyncWebsocketConsumer):
         
 
         return super().websocket_receive(message)
+
+
+
 ##
 #   Discoverer  - the websocket consumer for the discover & enumerate functionality
 #
 class Discoverer(AsyncWebsocketConsumer):
+
+    def build_url(self, target, port, ext):
+        url = "http://"
+        url += target
+        url += ":"
+        url += str(port)
+        if(ext[0] != "/"):
+            url+="/"
+        url += ext
+
+        return url
 
     ## Websocket receive ##
     async def receive(self, text_data):
@@ -442,213 +456,120 @@ class Discoverer(AsyncWebsocketConsumer):
 
 
     ## Enumerate the device at target:port/extension
-    async def enumerate_device(self, target, port, extension):
-
-
-
-        dev_name = ""
-        periph_ids = []
-        periph_num = 0
-        device_id = 0
-        peripherals = []
-        
-        url = "http://"
-        url += target
-        url += ":"
-        url += str(port)
-        if(extension[0] != "/"):
-            url+="/"
-        url += extension
+    async def enumerate_device(self, target, port, ext):
+        """ 
+            Send sequential/recursive info requests
+            Create a nested data structure from responses
+            Store the new device in database
+        """
         fail = False
+        url = self.build_url(target, port, ext)
 
-        res, resp = await ext_http_post(url, data)
+        # use the new packet class! # 
+        devInfo = DevInfoPacket(url)
+        res_d, rsp_d = await devInfo.send_request()
         
-        if res != HTTP_RSP_AQUIRED:
-            await self.send(json.dumps(error_response(res)))
+        ## Do safety dance
+        if res_d != HTTP_RSP_AQUIRED:
+            await self.send(json.dumps(error_response(res_d)))
             fail = True
-        
-        if not fail:
-            if "rsp_type" not in resp.keys():
-                await self.send(json.dumps(error_response(ERR_CODE_RSP_INVJSON)))
-                fail = True
-        if not check_response_keys(resp["rsp_type"], resp):
-            await self.send(json.dumps(error_response(ERR_CODE_RSP_INVJSON)))
-            fail = True
-
-        if not fail:        
-            dev_name = resp['name']
-            periph_ids = resp['periph_ids']
-            periph_num = resp['periph_num']
-            device_id = resp['dev_id']
-
-            if(type(periph_ids) != list):
-                await self.send(json.dumps({"data": "> Got weird list! FAILED"}))
-                fail = True
-
-        # ## check device is not already enumerated...
-        # if not fail:
-        #     if self.is_existing_device(device_id):
-        #         await self.send(json.dumps({"data": "Error: Device already exists! Try /update", "code": 508}))
-        #         fail = True
-
-
-        ## sanity checking the json type
-        if not fail:
-                    ## TODO: These dicts are ugly. Make this better
-            p_info = {          
-                "cmd_type": 0,
-                "periph_id": 0,
-                "param_id": 0,
-                "data": 0,
-                "data_type": 0
+        else:
+            device_data = {
+                "name": devInfo.get_response_value("name"),
+                "peirph_num": devInfo.get_response_value("periph_num"),
+                "dev_id": devInfo.get_response_value("dev_id"),
+                "last_polled": datetime.now(),
+                "ip_addr": target,
+                "api_port": int(port),
+                "cmd_url": ext,
+                "sleep_state": 0,
+                "is_powered": True,
+                "setup_date": datetime.now(),
+                "peripherals": [],
             }
 
-            for p in periph_ids:
-                p_info['periph_id'] = p
-                p_model = {
-                    "param_ids": [],
-                    "name": 0,
-                    "param_num": 0,
-                    "periph_id": 0,
-                    "periph_type": 0,
-                    'sleep_state': 0,
-                    'is_powered': True,
-                    "params": [],
-                }
-
-                try:
-                    async with aiohttp.ClientSession() as s:
-                        async with s.post(url, json=p_info) as rsp:
-                            p_data = await rsp.json()
-                            p_model["param_ids"] = p_data['param_ids']
-                            p_model["name"] = p_data['name']
-                            p_model["param_num"] = p_data['param_num']
-                            p_model["periph_id"] = p_data['periph_id']    
-                            p_model["periph_type"] = p_data["periph_type"]
-                except aiohttp.ClientResponseError:
-                    await self.send(json.dumps({"data": "Bad response from device! FAIL", "code": 505}))
+            ## recusively get info about peripherals
+            for p in devInfo.get_periph_ids():
+                periphInfo = PeriphInfoPacket(url, p)
+                res_p, rsp_p = await periphInfo.send_request()
+                ## Do safety dance
+                if res_p != HTTP_RSP_AQUIRED:
+                    await self.send(json.dumps(error_response(res_p)))
                     fail = True
-                except KeyError:
-                    await self.send(json.dumps({"data": "Missing keys in response!", "code": 505}))
-
-
-                if not fail:
-                    await self.send(json.dumps({"data": f"Enumerated: Peripheral {p_model['name']} [{p_model['periph_id']}]- {p_model['param_num']} Parameters", "code": 201}))
-
-                    prm_info = {
-                        "cmd_type": 0,
-                        "periph_id": p,
-                        "param_id": 0,
-                        "data": 0,
-                        "data_type": 0,
-                        "is_gettable": False,
-                        "is_settable": False,
-                        "is_action": False,
-                        "is_streamable": False,
+                else:
+                    periph_data = {
+                        "device": device_data["dev_id"],
+                        "periph_id": periphInfo.get_response_value("periph_id"),
+                        "name": periphInfo.get_response_value("name"),
+                        "param_num": periphInfo.get_response_value("param_num"),
+                        "param_ids": periphInfo.get_param_ids(),
+                        "periph_type": periphInfo.get_response_value("periph_type"),
+                        "parameters": [],
                     }
 
-                    for param in p_model['param_ids']:
-                        print("sending")
-                        print(param)
-                        prm_info['param_id'] = param
-                        try:
-                            prm_model = {
-                                'name': "",
-                                'periph_id': 0,
-                                'param_id': 0,
-                                'param_type': 0,
-                                'methods': 0,
-                                'max_value': 0,
-                                'data_type': 0,
+                    ## recusively get info about parameters
+                    for prm in periphInfo.get_param_ids():
+                        paramInfo = ParamInfoPacket(url, p, prm)
+                        res_prm, rsp_prm = await periphInfo.send_request()
+                        ## Da da Da da DaDa Da Da Da Safety Dance
+                        if res_prm != HTTP_RSP_AQUIRED:
+                            await self.send(json.dumps(error_response(res_prm)))
+                            fail = True
+                        else: 
+                            param_data = {
+                                "name": paramInfo.get_response_value("name"),
+                                "periph_id": periph_data["periph_id"],
+                                "param_id": paramInfo.get_response_value("param_id"),
+                                "param_type": 0,
+                                "methods": paramInfo.get_response_value("methods"),
+                                "max_value": paramInfo.get_response_value("param_max"),
+                                "data_type": paramInfo.get_response_value("data_type"),
                             }
-                            async with aiohttp.ClientSession() as s:
-                                async with s.post(url, json=prm_info) as rsp:
-                                    prm_data = await rsp.json()  
-                                    prm_model['name'] = prm_data['param_name']
-                                    prm_model['periph_id'] = prm_data['periph_id']
-                                    prm_model['param_id'] = prm_data['param_id']
-                                    prm_model['param_type'] = 0 #prm_data['param_type']
-                                    prm_model['methods'] = prm_data['methods']
-                                    prm_model['max_value'] = prm_data['param_max']
-                                    prm_model['data_type'] = prm_data['data_type']
 
-                                    p_model['params'].append(prm_model)
-                        except aiohttp.ClientResponseError:
-                            await self.send(json.dumps({"data": "Bad response from device! FAIL", "code": 505}))
-                            fail = True
-                        except KeyError:
-                            await self.send(json.dumps({"data": "Missing keys in response!", "code": 505}))
-                            fail = True
+                            periph_data["parameters"].append(param_data)
 
-                        if not fail:
-                            await self.send(json.dumps({"data": f"Enumerated: [child {p_model['periph_id']}]Parameter: {prm_model['name']} [{prm_model['param_id']}]", "code": 201}))
-
-                peripherals.append(p_model)
+                    device_data["peripherals"].append(periph_data)
 
         if not fail:
             await self.send(json.dumps({"data": " Device succesfully enumerated", "code": 200 }))
             await self.send(json.dumps({"data": " Engaging database... standby", "code": 200 }))
         else:
             await self.send(json.dumps({"data": "Device enumeration failed :(", "code": 506 }))
-        
 
+        # store the items
         if not fail:
-            ## log items to the database
+            for periph in device_data["peripherals"]:
+                for param in periph["parameters"]:
+                    param['is_gettable']    = ((param['methods'] & API_GET_MASK) > 0)
+                    param['is_settable']    = ((param['methods'] & API_SET_MASK) > 0)
+                    param['is_action']      = ((param['methods'] & API_ACT_MASK) > 0)
+                    param['is_streamable']  = ((param['methods'] & API_STREAM_MASK) > 0)
 
-            device_info = { 
-                            "name": dev_name,
-                            "periph_num": periph_num,
-                            "dev_id": device_id,
-                            "last_polled": datetime.now(),
-                            "ip_addr": target,
-                            "api_port": int(port),
-                            "cmd_url": extension,
-                            "num_peripherals": periph_num, 
-                            "sleep_state": 0,
-                            "is_powered": True,
-                            "setup_date": datetime.now(),
-                            }
-
-            result = await build_new_device(device_info)
-            
-            if not result:
-                await self.send(json.dumps({"data": "- failed when creating new device", "code": 506 }))
-                fail = True
-            else:
-                await self.send(json.dumps({"data": "- Created new Device [id]", "code": 201}))
-
-            if not fail:
-                for item in peripherals:
-                    item['device'] = device_info['dev_id']
-                    
-                    result = await build_new_peripheral(item)
-
+                    result = await build_new_parameter(param, periph["device"])
                     if not result:
-                        await self.send(json.dumps({"data": "- - failed when creating new peripheral", "code": 506}))
+                        await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 506}))
                         fail = True
                     else:
-                        await self.send(json.dumps({"data": "- - Created new Peripheral [id]", "code": 201}))
-
-                    if not fail: 
-                        for p in item['params']:
-
-                            p['is_gettable'] = ((p['methods'] & API_GET_MASK) > 0)
-                            p['is_settable'] = ((p['methods'] & API_SET_MASK) > 0)
-                            p['is_action'] = ((p['methods'] & API_ACT_MASK) > 0)
-                            p['is_streamable'] = ((p['methods'] & API_STREAM_MASK) > 0)
-
-                            result = await build_new_parameter(p, item['device'])
-
-                            if not result:
-                                await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 506}))
-                                fail = True
-                            else:
-                                await self.send(json.dumps({"data": "- - - Created new Parameter [id]", "code": 201}))
-
+                        await self.send(json.dumps({"data": "- - - Created new Parameter [id]", "code": 201}))
+                if not fail:
+                    result = await build_new_peripheral(periph)
+                    if not result:
+                        await self.send(json.dumps({"data": "- - - failed when creating new peripheral", "code": 506}))
+                        fail = True
+                    else:
+                        await self.send(json.dumps({"data": "- - - Created new Peripheral [id]", "code": 201}))
             if not fail:
-                await self.send(json.dumps({"data": "Succesfully enumerated Device!", "code": 201}))
-            else:
-                await self.send(json.dumps({"data": "Failed to Enumerate Device :(", "code": 506 }))
+                result = await build_new_device(device_data)
+                if not result:
+                    await self.send(json.dumps({"data": "- - - failed when creating new Device", "code": 506}))
+                    fail = True
+                else:
+                    await self.send(json.dumps({"data": "- - - Created new Device [id]", "code": 201}))
+
+        if not fail:
+            await self.send(json.dumps({"data": "Succesfully enumerated Device!", "code": 201}))
+        else:
+            await self.send(json.dumps({"data": "Failed to Enumerate Device :(", "code": 506 }))
    
 
 
