@@ -1,5 +1,6 @@
 
 import json
+import aiohttp
 
 ERR_CODE_RSP_INVJSON = 0x30
 ERR_CODE_HTTP_TIMEOUT = 0x31
@@ -60,15 +61,6 @@ PTYPE_COMMS = 0x0A            #/** < a comms/bluetooth/radio */
 PTYPE_NONE = 0xFF       #/** < blank **/
 
 
-base_keys = ["dev_id", "periph_id"]
-info_keys = []
-get_keys = ["dev_id", "periph_id", "param_id"]
-act_keys = ["dev_id", "periph_id", "param_id"]
-data_keys = ["periph_id", "param_id", "data", "data_type"]
-set_keys = ["dev_id", "periph_id", "param_id", "data", "data_type"] # check this data t is needed
-stream_keys =  ["dev_id", "periph_id", "param_ids", "rate", "ext"]
-err_keys = ["error_code", "msg"]
-
 API_WEBSOCKET_RATE_1HZ = 0
 API_WEBSOCKET_RATE_5HZ = 1
 API_WEBSOCKET_RATE_10HZ = 2
@@ -81,57 +73,165 @@ API_WEBSOCKET_RATES = [
     API_WEBSOCKET_RATE_10HZ,
 ]
 
+base_keys = ["dev_id", "periph_id"]
+info_keys = []
+get_keys = ["dev_id", "periph_id", "param_id"]
+act_keys = ["dev_id", "periph_id", "param_id"]
+data_keys = ["periph_id", "param_id", "data", "data_type"]
+set_keys = ["dev_id", "periph_id", "param_id", "data", "data_type"] # check this data t is needed
+stream_keys =  ["dev_id", "periph_id", "param_ids", "rate", "ext"]
+err_keys = ["error_code", "msg"]
 
-dev_info_pkt = {"cmd_type": 0,
-                "periph_id": 0,
-                "param_id": 0,
-                "data": 0,
-                "data_type": 0
-                }
+##
+#   Error response messages
+#
+error_messages = {
+    ERR_CODE_RSP_INVJSON: "Invalid JSON in device response",
+    ERR_CODE_HTTP_TIMEOUT: "Device response timed out",
+    ERR_CODE_INV_URL: "Device URL is invalid",
+    ERR_CODE_INVALID_RESPONSE_LEN: "Response length is invalid",
+    ERR_CODE_INVALID_JSON: "Invalid json in request",
+    ERR_CODE_MISSING_FIELD: "Missing field in request",
+    ERR_CODE_INVALID_CMD_PARAMS: "Invalid command parameters",
+    ERR_CODE_INVALID_DEV_ID: "Invalid device ID",
+    ERR_CODE_INVALID_PERIPH_ID: "Invalid peripheral ID",
+    ERR_CODE_INVALID_PARAM_ID: "Invalid parameter ID",
+    ERR_CODE_INVALID_REQUEST: "Invalid request type",
+}
 
 
+
+
+HTTP_RSP_AQUIRED = 0
+HTTP_RSP_NOT_AQUIRED = 0xFF
+DEBUG = 1
+
+
+
+def debug_print(msg):
+    if DEBUG == 1:
+        print(msg)
+
+
+
+
+#######################
+##  class RequestPacket
+#   \brief          - a request class base to make API requests a little easier
+#   \param url      - the url for the request 
+#   \param cmd_type - the command type code
+#   \periph_id      - the peripheral id
+#   \param_id       - the parameter id
 class RequestPacket():
-    
-    def __init__(self):
-        self.fields = {}
 
+    ''' a dict holding the json k/v pairs '''
+    fields = {}
+    response_status = HTTP_RSP_NOT_AQUIRED
+    response = None
+
+    ''' set the provided cmd type & url '''
+    def __init__(self, url, cmd_type, periph_id, param_id):
+        self.fields["cmd_type"] = cmd_type
+        self.fields["param_id"] = param_id
+        self.fields["periph_id"] = periph_id
+        self.url = url
+
+    ''' return the fields as a string '''  
     def dump_string(self):
         return json.dumps(self.fields)
 
+    ''' return the fields as a dict '''
     def pkt_dict(self):
         return self.fields
 
+    ''' send the json fields to the url & return response/status '''
+    async def send_request(self):
 
+        result = 0
+        response_data = {}
+        debug_print(f"posting data to {url}")
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.post(url, json=self.fields) as rsp:
+                    response_data = await rsp.json()
+                    debug_print("sent")
+                    debug_print(self.dump_string)
+                    debug_print(f"Got response: (status: {rsp.status})")
+                    debug_print(response_data)
+                    result = HTTP_RSP_AQUIRED
+        except json.JSONDecodeError:
+            result = ERR_CODE_RSP_INVJSON
+        except aiohttp.ClientTimeout:
+            result = ERR_CODE_HTTP_TIMEOUT
+        except aiohttp.InvalidURL:
+            result = ERR_CODE_INV_URL
+
+        self.response_status = result
+        self.response = response_data
+
+        return result, response_data
+
+    ''' get the response status ''' 
+    def get_response_status(self):
+        return self.response_status
+    
+    ''' get the response dict, None if no reponse '''
+    def get_response(self):
+        return self.response
+
+
+##################################
+## parent class for an info request
 class InfoPacket(RequestPacket):
 
-    def __init__(self):
-        super().__init__()
-        self.fields["cmd_type"] = 0
+    def __init__(self, url, periph_id, param_id):
+        super().__init__(url, CMD_TYPE_INFO, periph_id, param_id)
+
 
 class DevInfoPacket(InfoPacket):
 
-    def __init__(self):
-        super().__init__()
-        self.fields["periph_id"] = 0
-        self.fields["param_id"] = 0
+    def __init__(self, url):
+        super().__init__(url, 0, 0)
 
 
 class PeriphInfoPacket(InfoPacket):
 
-    def __init__(self, periph_id: int):
-        super().__init__()
-        self.fields["periph_id"] = periph_id
-        self.fields["param_id"] = 0
+    def __init__(self, url, periph_id: int):
+        super().__init__(url, periph_id, 0)
 
 
 class ParamInfoPacket(InfoPacket):
 
-    def __init__(self, periph_id, param_id):
-        super().__init__()
-        self.fields["periph_id"] = periph_id
-        self.fields["param_id"] = param_id
+    def __init__(self, url, periph_id, param_id):
+        super().__init__(url, periph_id, param_id)
 
 
+class ParamGetPacket(RequestPacket):
+
+    def __init__(self, periph_id, param_id, data, data_t):
+        super().__init__(CMD_TYPE_GET)
+        self.fields["data_type"] = data_t
+
+
+class ParamSetPacket(RequestPacket):
+
+    def __init__(self, url, periph_id, param_id, data, data_t):
+        super().__init__(url, CMD_TYPE_SET, periph_id, param_id)
+        self.fields["data_type"] = data_t
+        if data_t == PARAMTYPE_BOOL:
+            self.fields["data"] = True if data else False
+        elif data_t == PARAMTYPE_STRING:
+            self.fields["data"] = str(data)
+        elif data_t == PARAMTYPE_FLOAT:
+            self.fields["data"] = float(data)
+        else:
+            self.fields["data"] = int(data)
+            
+
+class ParamActionPacket(RequestPacket):
+
+    def __init__(self, url, periph_id, param_id):
+        super().__init__(url, CMD_TYPE_ACTION, periph_id, param_id)
 
 
 

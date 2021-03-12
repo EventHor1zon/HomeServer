@@ -23,24 +23,8 @@ API_MAX_HTTP_DATA_LEN = 1024
 
 API_WEBSOCKET_INCOMMING_STREAM_EXTENSION = "/stream"
 
-HTTP_RSP_AQUIRED = 0
 
-##
-#   Error response messages
-#
-error_messages = {
-    ERR_CODE_RSP_INVJSON: "Invalid JSON in device response",
-    ERR_CODE_HTTP_TIMEOUT: "Device response timed out",
-    ERR_CODE_INV_URL: "Device URL is invalid",
-    ERR_CODE_INVALID_RESPONSE_LEN: "Response length is invalid",
-    ERR_CODE_INVALID_JSON: "Invalid json in request",
-    ERR_CODE_MISSING_FIELD: "Missing field in request",
-    ERR_CODE_INVALID_CMD_PARAMS: "Invalid command parameters",
-    ERR_CODE_INVALID_DEV_ID: "Invalid device ID",
-    ERR_CODE_INVALID_PERIPH_ID: "Invalid peripheral ID",
-    ERR_CODE_INVALID_PARAM_ID: "Invalid parameter ID",
-    ERR_CODE_INVALID_REQUEST: "Invalid request type",
-}
+
 
 
 def error_response(err_code: int, msg=None):
@@ -60,9 +44,6 @@ def error_response(err_code: int, msg=None):
     return error_response
 
 
-def debug_print(msg):
-    if DEBUG == 1:
-        print(msg)
 
 
 def check_json_errors(data: dict, keys: list):
