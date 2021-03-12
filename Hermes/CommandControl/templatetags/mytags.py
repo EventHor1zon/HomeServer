@@ -6,3 +6,5 @@ register = template.Library()
 @register.filter
 def ashex(value):
     return hex(value)
+
+

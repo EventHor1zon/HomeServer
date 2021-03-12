@@ -60,8 +60,6 @@ def error_response(err_code: int, msg=None):
     return error_response
 
 
-
-
 def debug_print(msg):
     if DEBUG == 1:
         print(msg)
@@ -98,6 +96,8 @@ async def ext_http_post(url: str, data: dict):
         async with aiohttp.ClientSession() as s:
             async with s.post(url, json=data) as rsp:
                 response_data = await rsp.json()
+                debug_print("sent")
+                debug_print(data)
                 debug_print(f"Got response: (status: {rsp.status})")
                 debug_print(response_data)
                 result = HTTP_RSP_AQUIRED
@@ -162,37 +162,27 @@ def get_device_object(dev_id):
 
 @database_sync_to_async
 def is_invalid_dev(dev_id):
-    if dev_id == 0:
+    try:
+        obj = models.Device.objects.get(dev_id=dev_id)
         return False
-    else:
-        try:
-            obj = models.Device.objects.get(dev_id=dev_id)
-            return False
-        except ObjectDoesNotExist:
-            return True
+    except ObjectDoesNotExist:
+        return True
 
 @database_sync_to_async
 def is_invalid_periph(dev_id, p_id):
-    if p_id == 0:
+    try:
+        obj = models.Peripheral.objects.filter(device__dev_id=dev_id).get(periph_id=p_id)
         return False
-    else:
-        try:
-            obj = models.Peripheral.objects.filter(device__dev_id=dev_id).get(periph_id=p_id)
-            return False
-        except ObjectDoesNotExist:
-            return True
+    except ObjectDoesNotExist:
+        return True
         
 @database_sync_to_async
 def is_invalid_param(d_id, p_id, prm_id):
-    if prm_id == 0:
+    try:
+        obj = models.Parameter.objects.filter(peripheral__periph_id=p_id).filter(peripheral__device__dev_id=d_id).get(param_id=prm_id)
         return False
-    else:
-        try:
-            obj = models.Parameter.objects.filter(peripheral__periph_id=p_id).filter(peripheral__device__dev_id=d_id).get(param_id=prm_id)
-            return False
-        except ObjectDoesNotExist:
-            return True
-
+    except ObjectDoesNotExist:
+        return True
 
 @database_sync_to_async
 def is_existing_device(d_id):
@@ -269,7 +259,6 @@ def build_new_peripheral(p_info):
             raise
     return success
 
-
 @database_sync_to_async
 def build_new_parameter(prm_info, dev_id):
     success = True
@@ -320,42 +309,45 @@ async def build_request(data):
     device_object = None
     param_object = None
     url = ""
-    request = {}
+    response = {}
     fail = False
 
     ## error check the request ## 
     if "cmd_type" not in data.keys():
+        debug_print("Error: missing cmd_type")
         response = error_response(ERR_CODE_MISSING_FIELD)
         fail = True
 
     ## check correct keys ##
     if not fail:
         cmd_type = CommandTypeToInteger(data['cmd_type'])
-
-        if check_request_keys(cmd_type):
+        if not check_request_keys(cmd_type, data):
             response = error_response(ERR_CODE_MISSING_FIELD)
             fail = True
 
     ## check valid device/param/peripheral ##
     if not fail:
-        if "dev_id" in data.keys() and is_invalid_dev(data['dev_id']):
-            response = error_response(ERR_CODE_INVALID_DEV_ID)
-            fail = True
-        elif "periph_id" in data.keys() and is_invalid_periph(data['dev_id'], data['periph_id']):
-            response = error_response(ERR_CODE_INVALID_PERIPH_ID)
-            fail = True
-        elif "param_id" in data.keys() and is_invalid_param(data['dev_id'], data['periph_id'], data['param_id']):
-            response = error_response(ERR_CODE_INVALID_PARAM_ID)
-            fail = True
+        if "dev_id" in data.keys():
+            fail = await is_invalid_dev(data['dev_id'])
+            if fail:
+                response = error_response(ERR_CODE_INVALID_DEV_ID)
+        elif "periph_id" in data.keys():
+            fail = await is_invalid_periph(data['dev_id'], data['periph_id'])
+            if fail:
+                response = error_response(ERR_CODE_INVALID_PERIPH_ID)
+        elif "param_id" in data.keys():
+            fail = is_invalid_param(data['dev_id'], data['periph_id'], data['param_id'])
+            if fail:
+                response = error_response(ERR_CODE_INVALID_PARAM_ID)
 
     ## check a couple of other fail conditions ##
     if not fail:
         if cmd_type != CMD_TYPE_INFO and (data['dev_id'] == 0 or data['periph_id'] == 0 or data['param_id'] == 0): 
             response = error_response(ERR_CODE_INVALID_CMD_PARAMS)
             fail = True
-        elif cmd_type == CMD_TYPE_SET and int(data['data_val']) > 0:
-            p_obj = await get_param_object(data['dev_id'], data['perih_id'], data['param_id'])
-            if p_obj == None or data['data_val'] > p_obj.max_value:
+        elif cmd_type == CMD_TYPE_SET and int(data['data']) > 0:
+            p_obj = await get_param_object(data['dev_id'], data['periph_id'], data['param_id'])
+            if p_obj == None or int(data['data']) > p_obj.max_value:
                 response = error_response(ERR_CODE_INVALID_DATA_VALUE)
                 fail = True
         elif cmd_type == CMD_TYPE_STREAM:
@@ -372,21 +364,21 @@ async def build_request(data):
             fail = True
 
     ## everything should be checked by here ## 
-
     ## build the request
     if not fail:
         response['cmd_type'] = cmd_type
         if cmd_type == CMD_TYPE_INFO or cmd_type == CMD_TYPE_GET or cmd_type == CMD_TYPE_ACTION or cmd_type == CMD_TYPE_SET:
-            response['periph_id'] = data['periph_id']
-            response['param_id'] = data['param_id']
+            response['periph_id'] = int(data['periph_id'])
+            response['param_id'] = int(data['param_id'])
         if cmd_type == CMD_TYPE_SET:
-            response['data_type'] = await get_param_object(data['dev_id'], data['periph_id'], data['param_id']).data_type
-            response['data'] = data['data_val']
+            d_obj = await get_param_object(data['dev_id'], data['periph_id'], data['param_id'])
+            response['data_type'] = int(d_obj.data_type)
+            response['data'] = int(data['data'])
         if cmd_type == CMD_TYPE_STREAM:
-            response['rate'] = data['rate']
-            response['ext'] = data['ext']
-            response['param_ids'] = data['param_ids']
-            response['periph_id'] = data['periph_id']
+            response['rate'] = int(data['rate'])
+            response['ext'] = int(data['ext'])
+            response['param_ids'] = int(data['param_ids'])
+            response['periph_id'] = int(data['periph_id'])
 
         device_object = await get_device_object(data['dev_id'])
 
@@ -406,25 +398,24 @@ async def build_request(data):
 
 
 
-
-
 class CommandConsumer(AsyncWebsocketConsumer):
 
     def __init__(self, **kwargs):
         super().__init__()
-        self.input_queue = Queue(100)
         
 
     async def receive(self, text_data):
         data = json.loads(text_data)
         
-        fail, rq, url = await self.build_request(data)
+        fail, rq, url = await build_request(data)
         
         ## if fail, return error message ##
         if fail == True:
             await self.send(json.dumps(rq))
         else:
             ## send the external http request ##
+            print("sending")
+            print(rq)
             result, response = await ext_http_post(url, rq)
             if result != HTTP_RSP_AQUIRED:
                 response = error_response(result)
@@ -439,18 +430,30 @@ class CommandConsumer(AsyncWebsocketConsumer):
 
 
 
-#
-#   Discoverer  - the websocket class for the discover & enumerate functionality
+class LedCtrlConsumer(AsyncWebsocketConsumer):
 
+    async def websocket_receive(self, message):
+
+        
+
+        return super().websocket_receive(message)
+##
+#   Discoverer  - the websocket consumer for the discover & enumerate functionality
+#
 class Discoverer(AsyncWebsocketConsumer):
 
     ## Websocket receive ##
     async def receive(self, text_data):
         
         data = json.loads(text_data)
-        target = data['ip_addr']
-        ext = data['extension']
-        port = data['port']
+        try:
+            target = data['ip_addr']
+            ext = data['extension']
+            port = data['port']
+        except KeyError:
+            print("missing initial data")
+            await self.send(json.dumps({"data": "Error: Missing initial data"}))
+            return
 
         await self.send(json.dumps({"data": f"> Enumerating device at [{target}]", "code": 1}))
 
@@ -460,12 +463,7 @@ class Discoverer(AsyncWebsocketConsumer):
     ## Enumerate the device at target:port/extension
     async def enumerate_device(self, target, port, extension):
 
-        data = {"cmd_type": 0,
-                "periph_id": 0,
-                "param_id": 0,
-                "data": 0,
-                "data_type": 0
-                }
+
 
         dev_name = ""
         periph_ids = []
@@ -482,7 +480,7 @@ class Discoverer(AsyncWebsocketConsumer):
         url += extension
         fail = False
 
-        res, resp = ext_http_post(url, data)
+        res, resp = await ext_http_post(url, data)
         
         if res != HTTP_RSP_AQUIRED:
             await self.send(json.dumps(error_response(res)))
@@ -492,15 +490,15 @@ class Discoverer(AsyncWebsocketConsumer):
             if "rsp_type" not in resp.keys():
                 await self.send(json.dumps(error_response(ERR_CODE_RSP_INVJSON)))
                 fail = True
-        if not check_response_keys():
+        if not check_response_keys(resp["rsp_type"], resp):
             await self.send(json.dumps(error_response(ERR_CODE_RSP_INVJSON)))
             fail = True
 
         if not fail:        
-            dev_name = data['name']
-            periph_ids = data['periph_ids']
-            periph_num = data['periph_num']
-            device_id = data['dev_id']
+            dev_name = resp['name']
+            periph_ids = resp['periph_ids']
+            periph_num = resp['periph_num']
+            device_id = resp['dev_id']
 
             if(type(periph_ids) != list):
                 await self.send(json.dumps({"data": "> Got weird list! FAILED"}))
@@ -679,6 +677,8 @@ class DeviceStream(AsyncWebsocketConsumer):
     """
 
     async def websocket_connect(self, message):
+        print("Got connection!")
+        await self.channel_layer.group_add("stream", self.channel_name)
         return super().websocket_connect(message)
 
     async def websocket_receive(self, message):
@@ -830,26 +830,35 @@ class ClientStream(AsyncWebsocketConsumer):
         if not fail:
             print("Device should be connecting to streaming component right about now...")
 
+        if not fail:
+            ## check this works!
+            Clients.objects.create(channel_name="stream")
+            await self.channel_layer.group_add("stream", self.channel_name)
+
         return super().websocket_connect(message)
 
-    async def receive(self, text_data=None, bytes_data=None):
-        print("got message")
-        if bytes_data is not None:
-            bytestring = bytes_data.decode("utf-8")
-            print(bytestring)
-        elif text_data is not None:
-            print(text_data)
-        else:
-            print("no data")
+    # async def receive(self, text_data=None, bytes_data=None):
+    #     print("got message")
+    #     if bytes_data is not None:
+    #         bytestring = bytes_data.decode("utf-8")
+    #         print(bytestring)
+    #     elif text_data is not None:
+    #         print(text_data)
+    #     else:
+    #         print("no data")
+    #     return super().receive(text_data=text_data, bytes_data=bytes_data)
 
-        return super().receive(text_data=text_data, bytes_data=bytes_data)
+    async def websocket_receive(self, message):
+        return super().websocket_receive(message)
 
-    async def send(self, text_data=None, bytes_data=None, close=False):
+    async def websocket_send(self, text_data=None, bytes_data=None, close=False):
         return super().send(text_data=text_data, bytes_data=bytes_data, close=close)
 
+    async def websocket_disconnect(self, message):
+        Clients.objects.filter(channel_name="stream").delete()
+        return super().websocket_disconnect(message)
+    
 
-    async def request_stream(self):
-        pass
 
 
 

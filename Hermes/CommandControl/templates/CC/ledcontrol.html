@@ -1,11 +1,18 @@
 {% extends 'CC/base.html' %} {% block content %}
 
-<div style="color: antiquewhite; width: 100%; height: 100%; display: grid; grid-template-rows: 1fr; grid-template-columns: 1fr 2fr 1fr;">
+<div style="color: antiquewhite; width: 100%; height: 100%; display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr 1fr;">
     <div style="grid-column-start: 1; grid-column-end: 2;">
         <h2> LED Control </h2>
         <p> A set of controls for group actions and general ease of clicking </p>
 
-        <b>Commands</b>
+    </div>
+    <div>
+        empty
+    </div>
+    <div class="circleBase type1" id="col_display">
+
+    </div>
+    <div>
         <table>
             <tr>
                 <th> Led Strip </th>
@@ -16,30 +23,50 @@
             <tr>
                 <td> {{ strip.name }} </td>
                 <td>
-                    <p> Placeholder </td>
-                <td><input type="checkbox"></td>
+                    <p> Placeholder
+                </td>
+                <td><input type="checkbox" id="{{ strip.periph_id }}_{{ strip.device.dev_id }}" name="led_select"></td>
             </tr>
             {% endfor %}
         </table>
+    </div>
+
+    <div>
+        also empty
 
     </div>
-    <div style="grid-column-start: 2; grid-column-end: 3; padding-top: 40%; padding-left: 10px; padding-right: 10px;">
 
-        <p><b id="rVal">0</b>
-            <input id="redSelect" class="rslider" type="range" max="255" value="0" style="background-color: red;" />
-        </p>
-        <p><b id="gVal">0</b>
-            <input id="greenSelect" class="gslider" type="range" max="255" value="0" style="background-color: green;" />
-        </p>
-        <p><b id="bVal">0</b>
-            <input id="blueSelect" class="bslider" type="range" max="255" value="0" style="background-color: blue;" />
-        </p>
-        <button style="background-color: black; color: rgb(250, 115, 0); width: 30%; align-self: center;">Update</button>
-    </div>
-    <div class="circleBase type1" id="col_display">
+    <div>
+        <div style="grid-column-start: 2; grid-column-end: 3;">
 
+            <p><b id="rVal">0</b>
+                <input id="redSelect" class="rslider" type="range" max="255" value="0" style="background-color: red;" />
+            </p>
+            <p><b id="gVal">0</b>
+                <input id="greenSelect" class="gslider" type="range" max="255" value="0" style="background-color: green;" />
+            </p>
+            <p><b id="bVal">0</b>
+                <input id="blueSelect" class="bslider" type="range" max="255" value="0" style="background-color: blue;" />
+            </p>
+            <button id="updateBtn" style="background-color: black; color: rgb(250, 115, 0); width: 30%; align-self: center;">Update</button>
+        </div>
     </div>
+
     <script>
+        const ws = new WebSocket(
+            'ws://' +
+            window.location.host +
+            '/ws/ledctrl'
+        );
+
+        ws.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            console.log(data);
+        }
+
+
+
+        var updateBtn = document.getElementById("updateBtn");
         var rSlider = document.getElementById("redSelect");
         var gSlider = document.getElementById("greenSelect");
         var bSlider = document.getElementById("blueSelect");
@@ -50,6 +77,9 @@
         var last_red = 0;
         var last_green = 0;
         var last_blue = 0;
+
+        var checkboxes = document.getElementsByName("led_select");
+        console.log(checkboxes)
 
         function convert(integer) {
             var str = Number(integer).toString(16);
@@ -64,7 +94,6 @@
             var b_hex = convert(last_blue);
 
             var colstring = "#" + r_hex + g_hex + b_hex;
-            console.log(colstring);
 
             return colstring;
         }
@@ -72,6 +101,33 @@
         function update_sample() {
             var newcol = make_colour();
             col_display.style.backgroundColor = newcol;
+        }
+
+        updateBtn.onclick = function(evt) {
+
+            var r_int = parseInt(last_red);
+            var g_int = parseInt(last_green);
+            var b_int = parseInt(last_blue);
+            var combined = ((b_int << 16) | (g_int << 8) | (r_int));
+            console.log("RGB Value: ")
+            console.log(combined);
+
+            var led_selected = [];
+            var num_selected = checkboxes.length;
+            for (i = 0; i < num_selected; i++) {
+                if (checkboxes[i].checked) {
+                    var i_d = checkboxes[i].id
+                    var dev_id = i_d.split("_")[0];
+                    var periph_id = i_d.split("_")[1];
+                    console.log(dev_id)
+                    led_selected.push();
+                }
+            }
+            console.log(led_selected);
+            /** dirty js, but I don't know any good tricks yet **/
+            /** so I write my own dirty tricks                 **/
+
+
         }
 
 

@@ -70,6 +70,12 @@ TEMPLATES = [
     },
 ]
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
+
 ASGI_APPLICATION = 'Hermes.asgi.application'
 
 WSGI_APPLICATION = 'Hermes.wsgi.application'
