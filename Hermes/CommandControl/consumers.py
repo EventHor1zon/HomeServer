@@ -187,7 +187,7 @@ def build_new_device(d_info: dict):
             ip_address=d_info['ip_addr'],
             api_port=d_info['api_port'],
             cmd_url=d_info['cmd_url'],
-            num_peripherals=d_info['num_peripherals'],
+            num_peripherals=d_info['periph_num'],
             sleep_state=d_info['sleep_state'],
             is_powered=d_info['is_powered'],
             setup_date=d_info['setup_date'],
@@ -219,8 +219,8 @@ def build_new_peripheral(p_info):
             device=D,
             name=p_info['name'],
             num_params=p_info['param_num'],
-            sleep_state=p_info['sleep_state'],
-            is_powered=p_info['is_powered'],
+            sleep_state=0,
+            is_powered=1,
         )
 
     except KeyError:
@@ -465,6 +465,9 @@ class Discoverer(AsyncWebsocketConsumer):
         fail = False
         url = self.build_url(target, port, ext)
 
+        await self.send(json.dumps({"data": "Starting........****", "code": 200 }))
+        await self.send(json.dumps({"data": f"Enumerating Device at {url}", "code": 200 }))
+
         # use the new packet class! # 
         devInfo = DevInfoPacket(url)
         res_d, rsp_d = await devInfo.send_request()
@@ -476,7 +479,7 @@ class Discoverer(AsyncWebsocketConsumer):
         else:
             device_data = {
                 "name": devInfo.get_response_value("name"),
-                "peirph_num": devInfo.get_response_value("periph_num"),
+                "periph_num": devInfo.get_response_value("periph_num"),
                 "dev_id": devInfo.get_response_value("dev_id"),
                 "last_polled": datetime.now(),
                 "ip_addr": target,
@@ -487,6 +490,7 @@ class Discoverer(AsyncWebsocketConsumer):
                 "setup_date": datetime.now(),
                 "peripherals": [],
             }
+            await self.send(json.dumps({"data": f"> Device {device_data['name']} [id: {hex(device_data['dev_id'])}]", "code": 200 }))
 
             ## recusively get info about peripherals
             for p in devInfo.get_periph_ids():
@@ -504,8 +508,10 @@ class Discoverer(AsyncWebsocketConsumer):
                         "param_num": periphInfo.get_response_value("param_num"),
                         "param_ids": periphInfo.get_param_ids(),
                         "periph_type": periphInfo.get_response_value("periph_type"),
+                        "sleep_state": 0,
                         "parameters": [],
                     }
+                    await self.send(json.dumps({"data": f">> Peripheral {periph_data['name']} [id: {hex(periph_data['periph_id'])}]", "code": 200 }))
 
                     ## recusively get info about parameters
                     for prm in periphInfo.get_param_ids():
@@ -517,7 +523,7 @@ class Discoverer(AsyncWebsocketConsumer):
                             fail = True
                         else: 
                             param_data = {
-                                "name": paramInfo.get_response_value("name"),
+                                "name": paramInfo.get_response_value("param_name"),
                                 "periph_id": periph_data["periph_id"],
                                 "param_id": paramInfo.get_response_value("param_id"),
                                 "param_type": 0,
@@ -525,7 +531,8 @@ class Discoverer(AsyncWebsocketConsumer):
                                 "max_value": paramInfo.get_response_value("param_max"),
                                 "data_type": paramInfo.get_response_value("data_type"),
                             }
-
+                            print(param_data)
+                            await self.send(json.dumps({"data": f">>> Parameter {param_data['name']} [id: {hex(param_data['param_id'])}]", "code": 200 }))
                             periph_data["parameters"].append(param_data)
 
                     device_data["peripherals"].append(periph_data)
@@ -538,33 +545,36 @@ class Discoverer(AsyncWebsocketConsumer):
 
         # store the items
         if not fail:
-            for periph in device_data["peripherals"]:
-                for param in periph["parameters"]:
-                    param['is_gettable']    = ((param['methods'] & API_GET_MASK) > 0)
-                    param['is_settable']    = ((param['methods'] & API_SET_MASK) > 0)
-                    param['is_action']      = ((param['methods'] & API_ACT_MASK) > 0)
-                    param['is_streamable']  = ((param['methods'] & API_STREAM_MASK) > 0)
 
-                    result = await build_new_parameter(param, periph["device"])
-                    if not result:
-                        await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 506}))
-                        fail = True
-                    else:
-                        await self.send(json.dumps({"data": "- - - Created new Parameter [id]", "code": 201}))
-                if not fail:
+            result = await build_new_device(device_data)
+            if not result:
+                await self.send(json.dumps({"data": "- - - failed when creating new Device", "code": 506}))
+                fail = True
+            else:
+                await self.send(json.dumps({"data": "- - - Created new Device [id]", "code": 201}))
+                
+            if not fail:
+
+                for periph in device_data["peripherals"]:
                     result = await build_new_peripheral(periph)
                     if not result:
                         await self.send(json.dumps({"data": "- - - failed when creating new peripheral", "code": 506}))
                         fail = True
                     else:
                         await self.send(json.dumps({"data": "- - - Created new Peripheral [id]", "code": 201}))
-            if not fail:
-                result = await build_new_device(device_data)
-                if not result:
-                    await self.send(json.dumps({"data": "- - - failed when creating new Device", "code": 506}))
-                    fail = True
-                else:
-                    await self.send(json.dumps({"data": "- - - Created new Device [id]", "code": 201}))
+                
+                    for param in periph["parameters"]:
+                        param['is_gettable']    = ((param['methods'] & API_GET_MASK) > 0) if param['methods'] is not None else 0
+                        param['is_settable']    = ((param['methods'] & API_SET_MASK) > 0) if param['methods'] is not None else 0
+                        param['is_action']      = ((param['methods'] & API_ACT_MASK) > 0) if param['methods'] is not None else 0
+                        param['is_streamable']  = ((param['methods'] & API_STREAM_MASK) > 0) if param['methods'] is not None else 0
+
+                        result = await build_new_parameter(param, periph["device"])
+                        if not result:
+                            await self.send(json.dumps({"data": "- - - failed when creating new parameter", "code": 506}))
+                            fail = True
+                        else:
+                            await self.send(json.dumps({"data": "- - - Created new Parameter [id]", "code": 201}))
 
         if not fail:
             await self.send(json.dumps({"data": "Succesfully enumerated Device!", "code": 201}))

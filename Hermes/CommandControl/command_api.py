@@ -142,7 +142,7 @@ class RequestPacket():
     ''' a dict holding the json k/v pairs '''
     fields = {}
     response_status = HTTP_RSP_NOT_AQUIRED
-    response = None
+    response = {}
     expected_rsp_t = 0xFF
     expected_rsp_keys = []
 
@@ -176,6 +176,17 @@ class RequestPacket():
                     debug_print(f"Got response: (status: {rsp.status})")
                     debug_print(response_data)
                     result = HTTP_RSP_AQUIRED
+                    self.response_status = result
+                    self.response.update(response_data)
+                    print("STORED RESPONSE")
+                    print(self.response)
+                    print("From self.get_response...")
+                    print(self.get_response())
+                    try:                        
+                        print("From get_response_value")
+                        print(self.get_response_value("name"))
+                    except:
+                        pass
         except json.JSONDecodeError:
             result = ERR_CODE_INVALID_RSP_JSON
         except aiohttp.ClientTimeout:
@@ -183,10 +194,8 @@ class RequestPacket():
         except aiohttp.InvalidURL:
             result = ERR_CODE_INVALID_URL
 
-        self.response_status = result
-        self.response = response_data
-
         return result, response_data
+
 
     ''' get the response status ''' 
     def get_response_status(self):
@@ -198,7 +207,8 @@ class RequestPacket():
 
     ''' get a response field value '''
     def get_response_value(self, key):
-        if self.response == None:
+        if len(self.response) == 0:
+            debug_print("Response is empty")
             return None
         elif not self.check_response_key(key):
             return None
@@ -207,11 +217,14 @@ class RequestPacket():
 
     ''' check for key in response '''
     def check_response_key(self, key: str):
-        if self.response == None:
+        if len(self.response) == 0:
+            debug_print("Response is empty")
             return False
         elif key in self.response.keys():
+            debug_print(f"Found key {key}")
             return True
         else:
+            debug_print(f"did not find key {key}")
             return False
 
     ''' check for a list of keys in response '''
@@ -224,7 +237,7 @@ class RequestPacket():
 
     ''' checks response is expected response '''
     def check_expected_response(self):
-        if self.response == None:
+        if len(self.response) == 0:
             return HTTP_RSP_NOT_AQUIRED
         elif not self.check_expected_response_type():
             try:
