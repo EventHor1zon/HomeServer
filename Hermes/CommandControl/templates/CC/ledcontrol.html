@@ -108,26 +108,29 @@
             var r_int = parseInt(last_red);
             var g_int = parseInt(last_green);
             var b_int = parseInt(last_blue);
-            var combined = ((b_int << 16) | (g_int << 8) | (r_int));
+            var combined = ((b_int << 16) | (r_int << 8) | (g_int));
             console.log("RGB Value: ")
             console.log(combined);
 
             var led_selected = [];
             var num_selected = checkboxes.length;
+            console.log("Checkboxes: ");
+            console.log(num_selected);
             for (i = 0; i < num_selected; i++) {
                 if (checkboxes[i].checked) {
                     var i_d = checkboxes[i].id
-                    var dev_id = i_d.split("_")[0];
-                    var periph_id = i_d.split("_")[1];
-                    console.log(dev_id)
-                    led_selected.push();
+                    led_selected.push(i_d);
                 }
             }
             console.log(led_selected);
             /** dirty js, but I don't know any good tricks yet **/
             /** so I write my own dirty tricks                 **/
-
-
+            if(led_selected.length > 0) {
+                ws.send(JSON.stringify({
+                    "rgb_col": combined,
+                    "led_ids": led_selected,
+                }));
+            }
         }
 
 

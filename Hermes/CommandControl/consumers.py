@@ -91,7 +91,19 @@ async def ext_http_post(url: str, data: dict):
 
     return result, response_data
 
+### 
+# utility - assemble url from device info
+#
+def assemble_url(target, port, ext):
+    url = "http://"
+    url += target
+    url += ":"
+    url += str(port)
+    if(ext[0] != "/"):
+        url+="/"
+    url += ext
 
+    return url
 ##
 #   @brief updates a parameter model value
 #   @data  dictionary data from a set request
@@ -123,6 +135,8 @@ def update_parameter(data, param_object):
         print("Urk, error updating parameter value")
         pass
 
+
+## returns a parameter object
 @database_sync_to_async
 def get_param_object(dev_id, periph_id, param_id):
     try:
@@ -132,6 +146,8 @@ def get_param_object(dev_id, periph_id, param_id):
         print("Invalid id")
         return None
 
+
+## returns a device object
 @database_sync_to_async
 def get_device_object(dev_id):
     try:
@@ -141,6 +157,8 @@ def get_device_object(dev_id):
         print("Invalid id")
         return None
 
+
+## checks invalid device
 @database_sync_to_async
 def is_invalid_dev(dev_id):
     try:
@@ -149,6 +167,8 @@ def is_invalid_dev(dev_id):
     except ObjectDoesNotExist:
         return True
 
+
+## checks if invalid peripheral
 @database_sync_to_async
 def is_invalid_periph(dev_id, p_id):
     try:
@@ -156,7 +176,9 @@ def is_invalid_periph(dev_id, p_id):
         return False
     except ObjectDoesNotExist:
         return True
-        
+
+
+## checks if invalid parameter
 @database_sync_to_async
 def is_invalid_param(d_id, p_id, prm_id):
     try:
@@ -165,6 +187,8 @@ def is_invalid_param(d_id, p_id, prm_id):
     except ObjectDoesNotExist:
         return True
 
+
+## Checks if is an existing device
 @database_sync_to_async
 def is_existing_device(d_id):
     exists = False
@@ -176,6 +200,8 @@ def is_existing_device(d_id):
     return exists
 
 
+
+## create a new device database entry 
 @database_sync_to_async
 def build_new_device(d_info: dict):
     success = True
@@ -206,6 +232,8 @@ def build_new_device(d_info: dict):
             success = False
     return success
 
+
+## create a new periph database entry 
 @database_sync_to_async
 def build_new_peripheral(p_info):
     success = True
@@ -240,6 +268,7 @@ def build_new_peripheral(p_info):
             raise
     return success
 
+## create a new param database entry 
 @database_sync_to_async
 def build_new_parameter(prm_info, dev_id):
     success = True
@@ -283,6 +312,10 @@ def build_new_parameter(prm_info, dev_id):
 #   parses incomming json request
 #   returns json string  
 #   to relay & target or error response
+#
+#
+#  TODO: Deprecated - use request objects instead!
+#  TODO: Replace usage in consumers
 ########################
 async def build_request(data):
     debug_print("Building request from:")
@@ -379,6 +412,9 @@ async def build_request(data):
 
 
 
+##
+#   Command consumer - websocket consumer for direct device commands
+#
 class CommandConsumer(AsyncWebsocketConsumer):
 
     def __init__(self, **kwargs):
@@ -410,15 +446,36 @@ class CommandConsumer(AsyncWebsocketConsumer):
             await self.send(json.dumps(response))
 
 
-
+##
+#   LedControl - websocket consumer for the led control page
+#
 class LedCtrlConsumer(AsyncWebsocketConsumer):
 
-    async def websocket_receive(self, message):
+    async def websocket_receive(self, msg):
+        print(msg)
+        d = msg["text"]
+        data = json.loads(d)
+        print(data)
+        try:
+            led_ids = data["led_ids"]
+            col = data["rgb_col"]
 
-        
+            led_devices = [(x.split("_")[0], x.split("_")[1]) for x in led_ids]
+            
+            for pair in led_devices:
+                dev = await get_device_object(pair[1])
+                url = assemble_url(dev.ip_address, dev.api_port, dev.cmd_url)
 
-        return super().websocket_receive(message)
-
+                Request = ParamSetPacket(url, pair[0], 3, col, PARAMTYPE_UINT32)
+                res, rsp = await Request.send_request()
+                if res != HTTP_RSP_AQUIRED:
+                    print("Error in request!")
+                else:
+                    p = await get_param_object(pair[1], pair[0], 3)
+                    await update_parameter(col, p)
+        except Exception as e:
+            print("Error occured")
+            print(e)
 
 
 ##

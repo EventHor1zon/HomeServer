@@ -148,9 +148,9 @@ class RequestPacket():
 
     ''' set the provided cmd type & url '''
     def __init__(self, url, cmd_type, periph_id, param_id):
-        self.fields["cmd_type"] = cmd_type
-        self.fields["param_id"] = param_id
-        self.fields["periph_id"] = periph_id
+        self.fields["cmd_type"] = int(cmd_type)
+        self.fields["param_id"] = int(param_id)
+        self.fields["periph_id"] = int(periph_id)
         self.url = url
 
     ''' return the fields as a string '''  
@@ -178,15 +178,6 @@ class RequestPacket():
                     result = HTTP_RSP_AQUIRED
                     self.response_status = result
                     self.response.update(response_data)
-                    print("STORED RESPONSE")
-                    print(self.response)
-                    print("From self.get_response...")
-                    print(self.get_response())
-                    try:                        
-                        print("From get_response_value")
-                        print(self.get_response_value("name"))
-                    except:
-                        pass
         except json.JSONDecodeError:
             result = ERR_CODE_INVALID_RSP_JSON
         except aiohttp.ClientTimeout:
@@ -311,7 +302,7 @@ class ParamGetPacket(RequestPacket):
 class ParamSetPacket(RequestPacket):
 
     def __init__(self, url, periph_id, param_id, data, data_t):
-        self.fields["data_type"] = data_t
+        self.fields["data_type"] = int(data_t)
         if data_t == PARAMTYPE_BOOL:
             self.fields["data"] = True if data else False
         elif data_t == PARAMTYPE_STRING:
