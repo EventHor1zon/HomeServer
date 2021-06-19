@@ -121,6 +121,23 @@
             }));
         };
     }
+
+    var act_buttons = document.getElementsByClassName('param_act');
+
+    for(var i=0; i<act_buttons.length; i++) {
+        act_buttons[i].onclick = function(e) {
+            var source = e.originalTarget.id;
+            const msg = "ACT";
+            datachannel.send(JSON.stringify({
+                "dev_id": "{{ peripheral.device.dev_id }}",
+                "periph_id": "{{ peripheral.periph_id }}",
+                "param_id": source,
+                "cmd_type": msg,
+                "data": 0,
+                "data_type": 0,
+            }));
+        }
+    }
     
 </script>
 

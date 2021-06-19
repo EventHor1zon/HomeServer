@@ -104,6 +104,8 @@ def assemble_url(target, port, ext):
     url += ext
 
     return url
+
+
 ##
 #   @brief updates a parameter model value
 #   @data  dictionary data from a set request
@@ -200,7 +202,6 @@ def is_existing_device(d_id):
     return exists
 
 
-
 ## create a new device database entry 
 @database_sync_to_async
 def build_new_device(d_info: dict):
@@ -267,6 +268,7 @@ def build_new_peripheral(p_info):
             success = False
             raise
     return success
+
 
 ## create a new param database entry 
 @database_sync_to_async
