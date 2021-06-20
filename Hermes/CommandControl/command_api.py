@@ -48,6 +48,9 @@ API_ACT_MASK = 4
 API_STREAM_MASK = 8
 
 ## API parameter data types
+## TODO: Fix problem of trying to do sizes 
+## can't use these in switch/if statements properly
+## get some utility functions to make things easier
 PARAMTYPE_NONE = 0
 PARAMTYPE_INT8 = 1
 PARAMTYPE_UINT8 = 1
@@ -86,6 +89,8 @@ API_WEBSOCKET_RATES = [
     API_WEBSOCKET_RATE_5HZ,
     API_WEBSOCKET_RATE_10HZ,
 ]
+
+API_WEBSOCKET_DELIMITER_CHAR = 0x7C
 
 base_keys = ["dev_id", "periph_id"]
 dev_info_rsp_keys = ["rsp_type", "name", "periph_ids", "periph_num", "dev_id"]
@@ -243,7 +248,7 @@ class RequestPacket():
     ''' check the response rsp_type matches expected '''
     def check_expected_response_type(self):
         try:
-            if response == None:
+            if self.response == None:
                 return False
             elif self.response['rsp_type'] == self.expected_rsp_t:
                 return True

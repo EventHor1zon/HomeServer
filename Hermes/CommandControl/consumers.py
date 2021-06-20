@@ -3,8 +3,11 @@
 import json
 import aiohttp
 import asyncio
+import struct
+from aiohttp.http_websocket import WSMsgType
 
 from asgiref.sync import sync_to_async
+from asyncio.futures import CancelledError
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.generic.http import AsyncHttpConsumer
 from channels.db import database_sync_to_async
@@ -358,7 +361,8 @@ async def build_request(data):
 
     ## check a couple of other fail conditions ##
     if not fail:
-        if cmd_type != CMD_TYPE_INFO and (data['dev_id'] == 0 or data['periph_id'] == 0 or data['param_id'] == 0): 
+        if (cmd_type != CMD_TYPE_INFO and cmd_type != CMD_TYPE_STREAM) \
+         and (data['dev_id'] == 0 or data['periph_id'] == 0 or data['param_id'] == 0): 
             response = error_response(ERR_CODE_INVALID_CMD_PARAMS)
             fail = True
         elif cmd_type == CMD_TYPE_SET and int(data['data']) > 0:
@@ -370,11 +374,12 @@ async def build_request(data):
             if type(data['param_ids']) is not list or len(data['param_ids']) == 0:
                 response = error_response(ERR_CODE_INVALID_JSON)
                 fail = True
-            else:
-                for p in data['param_ids']:
-                    if is_invalid_param(data['dev_id'], data['periph_id'], p):
-                        response = error_response(ERR_CODE_INVALID_PARAM_ID)
-                        fail = True
+            # else:
+            #     print(data['param_ids'])
+            #     for p in data['param_ids']:
+            #         if is_invalid_param(data['dev_id'], data['periph_id'], p):
+            #             response = error_response(ERR_CODE_INVALID_PARAM_ID)
+            #             fail = True
         elif cmd_type == CMD_TYPE_STREAM and int(data['rate']) > API_WEBSOCKET_MAX_RATE:
             response = error_response(ERR_CODE_INVALID_STREAM_RATE)
             fail = True
@@ -393,19 +398,24 @@ async def build_request(data):
         if cmd_type == CMD_TYPE_STREAM:
             response['rate'] = int(data['rate'])
             response['type'] = 0
-            response['param_ids'] = int(data['param_ids'])
+            response['param_ids'] = data['param_ids']
             response['periph_id'] = int(data['periph_id'])
 
         device_object = await get_device_object(data['dev_id'])
 
-        url = "http://"
+        if cmd_type != CMD_TYPE_STREAM:
+            url = "http://"
+        else:
+            url = "ws://"
         url += device_object.ip_address
         url += ":"
         url += str(device_object.api_port)
         if not device_object.cmd_url.startswith("/"):
             url += "/"
-        url += device_object.cmd_url
-
+        if cmd_type != CMD_TYPE_STREAM:
+            url += device_object.cmd_url
+        else:
+            url += "stream" ### TODO: This better!
 
     ret = (fail, response, url)
     debug_print(f"build request returning Fail={fail} response={response} url={url}")
@@ -648,6 +658,7 @@ class DeviceStream(AsyncWebsocketConsumer):
     """
 
     established = False
+    middleman_task = None
 
     start_tags = {
         "dev_id": int, 
@@ -660,11 +671,11 @@ class DeviceStream(AsyncWebsocketConsumer):
 
     def check_valid_tags(self, data, tags):
         err = 0
-        for tag, val in tags:
+        for tag, val in tags.items():
             if tag not in data.keys():
                 print(f"Missing tag {tag}") 
                 err+=1
-            else if type(data[tag]) != val:
+            elif type(data[tag]) != val:
                 print(f"Wrong data type - {tag} should be {val} not {type(data[tag])}")
                 err+=1
         return True if not err else False
@@ -675,53 +686,190 @@ class DeviceStream(AsyncWebsocketConsumer):
         await self.channel_layer.group_add("stream", self.channel_name)
 
 
+    async def websocket_disconnect(self, message):
+        if self.established and self.middleman_task != None:
+            print("Trying to cancel middle-man task...")
+            self.middleman_task.cancel()
+            try:
+                await self.middleman_task
+            except asyncio.CancelledError:
+                print("Task succesfully cancelled")
+        return super().websocket_disconnect(message)
+
+
 
     async def websocket_receive(self, message):
+
         if not self.established:
-            start_data = message['text']
-            if not check_valid_tags(start_data, self.start_tags):
+            start_data = json.loads(message['text'])
+            print(start_data)
+            if not self.check_valid_tags(start_data, self.start_tags):
                 print("Invalid stream request")
             else:
-                (fail, rsp, url) = build_request(start_data)
+                (fail, req, url) = await build_request(start_data)
                 if(fail):
                     print("Error whilst building the request")
                 else:
                     ## need to get the expected packet structure here
-                    for n in start_data['periph_ids']:
-                        p = await get_periph_object(start_data['dev_id'])
+                    fail, format_details = await self.format_string_from_param_list(start_data)
+                    if fail:
+                        print("Error building packet details")
+                    else:
+                        print("Succesfully built packet - start the middle-man task...")
+                        self.middleman_task = asyncio.create_task(self.websocket_bridge(url, req, format_details))
 
 
+    async def format_string_from_param_list(self, rq_data):
+        fail = False
+        packet_structure = {}
+        param_list = rq_data['param_ids']
+        fstring = "<"
+        names = []
+        pkt_len = 0
+        ctr = 0
+        for n in param_list:
+            p = await get_param_object(rq_data['dev_id'], rq_data['periph_id'], n)
+            if p == None:
+                self.send(json.dumps(error_response(ERR_CODE_INVALID_PARAM_ID, "Parameter not found")))
+                fail = True
+                break
+            else:
+                names.append(p.name)
+                if ctr > 0:
+                    pkt_len += 1
+                    fstring += "b" ## delimiter byte
+                dtype = p.data_type
+                if dtype == PARAMTYPE_UINT8:
+                    fstring += "B"
+                    pkt_len += 1
+                elif dtype == PARAMTYPE_UINT16:
+                    pkt_len += 2
+                    fstring += "H"
+                elif dtype == PARAMTYPE_UINT32:
+                    pkt_len += 4
+                    fstring += "L"
+                elif dtype == PARAMTYPE_FLOAT:
+                    pkt_len += 4
+                    fstring += "f"
+                elif dtype == PARAMTYPE_DOUBLE:
+                    pkt_len += 8
+                    fstring += "d"
+                elif dtype == PARAMTYPE_STRING:
+                    pkt_len += 1
+                    fstring += "s"
+                elif dtype == PARAMTYPE_BOOL:
+                    pkt_len += 1
+                    fstring += "?"
+                ctr+=1
+        print(f"Build format string: {fstring}")
 
+        if not fail:
+            if struct.calcsize(fstring) != pkt_len:
+                print(f"Struct size disparity! (pkt_len = {pkt_len}")
+                pkt_len = struct.calcsize(fstring)
+                print(f"new pkt_len = {pkt_len})")
 
+            packet_structure = {
+                "fmt_string": fstring,
+                "pkt_length": pkt_len,
+                "names": names,
+                "items": ctr,
+            }
+
+        return fail, packet_structure
 
 
 
     async def websocket_bridge(self, url: str, init_packet: dict, pkt_format: dict):
         cancelled = False
+        err_count = 0
         pkt_counter = 0
         ## do the bridging between device and the client ##
         timeout = aiohttp.ClientTimeout(total=30)
+        outgoing = {}
+        fmt = pkt_format['fmt_string']
+
+        print("middle-man task starting")
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.ws_connect(url) as ws:
                 ## establish the WS connection & send initial packet...
                 if not self.established:
+                    print("sending " + json.dumps(init_packet))
                     await ws.send_str(json.dumps(init_packet))
+
+
+                ## until cancelled, loop receiving
+                while not cancelled:
                     try:
-                        rsp = await ws.receive_str()
-                        rsp_data = json.loads(rsp)
-                        if rsp_data['rsp_type'] != RSP_TYPE_OK:
-                            error_rsp = error_response(ERR_CODE_MISSING_FIELD, "err")
-                            await self.send(json.dumps(error_rsp))
-                        else:
-                            # connection established - now wait for the data!
-                            self.established = True
-                    except TypeError:
-                        print("Got binary type response!")
-                ## connection est - expecting binary data
-                else
+                        incomming = await ws.receive(timeout=10)
+                        print(f"Got {incomming}")
+                        ## unpack the data here
+                        if incomming.data == None:
+                            err_count += 1
+                            print("Data = None!")
+                        elif incomming.type == WSMsgType.TEXT:
+                            print("Got a text packet")
+                            print(incomming.data)
+                        elif incomming.type == WSMsgType.BINARY:
+                            print("Got a bin packet")
+                            print(type(incomming.data))
+                            bin_data = incomming.data[:-1]
+                            print(f"bin data: {bin_data} {type(bin_data)}")
+                            data = struct.unpack(fmt, bin_data)
+                            print(f"Done unpacking {data}")
+                            parsed = []                
+                            ## remove the delimiters
+                            for d in data:
+                                if d != API_WEBSOCKET_DELIMITER_CHAR:
+                                    parsed.append(d)
+                            ## length check 
+                            print(parsed)
+                            if len(parsed) != pkt_format['items']:
+                                print(parsed)
+                                print("vs")
+                                print(pkt_format['names'])
+                                raise AttributeError
+                            
+                            ## add unpacked data to outgoing
+                            for i in range(len(parsed)):
+                                outgoing[pkt_format['names'][i]] = parsed[i]
+                            
+                            ## assign a packet_type field & send to client 
+                            outgoing['packet_type'] = "ws_data"
+                            print(f"Sending {outgoing} to host")
+                            await self.send(json.dumps(outgoing))
+                    except KeyError as e:
+                        print(f"Keyerror {e}")
+                        err_count += 1
+                        raise
+                    except struct.error as e:
+                        err_count += 1
+                        print(f"Unpacking error! {e}")
+                        pass
+                    except TypeError as e:
+                        err_count += 1
+                        print(f"Unexpected type {e}")
+                        pass
+                    except AttributeError:
+                        err_count += 1
+                        print(f"Invalid length! Got {parsed.length()} expected {pkt_format['items']}")
+                        pass
+                    except asyncio.CancelledError:
+                        ## this should be handled by loop? 
+                        err_count += 1
+                        print("Middle-man task was cancelled!")
+                        cancelled = True
 
+                    if err_count > 10:
+                        print("stopped - error count")
+                        cancelled = True
+                    ## yield to other processes - not sure if needed
+                    asyncio.sleep(0)
 
+                ws.close()
+
+        return
 
 # class ClientStream(AsyncWebsocketConsumer):
 
