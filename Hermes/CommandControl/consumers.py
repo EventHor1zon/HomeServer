@@ -392,7 +392,7 @@ async def build_request(data):
             response['data'] = int(data['data'])
         if cmd_type == CMD_TYPE_STREAM:
             response['rate'] = int(data['rate'])
-            response['ext'] = int(data['ext'])
+            response['type'] = 0
             response['param_ids'] = int(data['param_ids'])
             response['periph_id'] = int(data['periph_id'])
 
@@ -647,187 +647,250 @@ class DeviceStream(AsyncWebsocketConsumer):
     """ this consumer hosts the websocket for the device to connect to
     """
 
+    established = False
+
+    start_tags = {
+        "dev_id": int, 
+        "periph_id": int, 
+        "param_ids": list,
+        "rate": int,
+        "type": int
+    }
+
+
+    def check_valid_tags(self, data, tags):
+        err = 0
+        for tag, val in tags:
+            if tag not in data.keys():
+                print(f"Missing tag {tag}") 
+                err+=1
+            else if type(data[tag]) != val:
+                print(f"Wrong data type - {tag} should be {val} not {type(data[tag])}")
+                err+=1
+        return True if not err else False
+
+
     async def websocket_connect(self, message):
-        print("Got connection!")
+        await super().websocket_connect(message)
         await self.channel_layer.group_add("stream", self.channel_name)
-        return super().websocket_connect(message)
+
+
 
     async def websocket_receive(self, message):
-        return super().websocket_receive(message)
-
-    async def websocket_disconnect(self, message):
-        return super().websocket_disconnect(message)
-
-
-
-class ClientStream(AsyncWebsocketConsumer):
-
-    """ plan for streamer... 
-        - want client to select streaming parameters then open up a websocket to this page
-        - start a websocket server
-        - send http request to the device requesting a stream
-        - wait for ok response 
-        - Device will connect to DeviceStream
-        - add client to a channel-layer
-        - ideally route traffic as low-effort as possible between device & client
-        - deal with cleanup, etc.
-    """
-
-
-    async def websocket_connect(self, message):
-        """ add the client to the channel layer? 
-            send the http request to the device
-        """
-        fail = False
-        device = None
-        periph = None
-        stream_params = []
-
-        error_rsp = {
-            "message": "",
-            "error_code": 0,
-        }
-
-        expected_keys = [
-            ("periph_id", int),
-            ("param_ids", list),
-            ("rate", int),
-            ("host", str),
-        ]
-
-        ## Whole heap a error checking - JSON first ##
-        try:
-            data = json.loads(message)
-        except json.JSONDecodeError:
-            print("Error decoding json")
-            fail = True
-            error_rsp['message'] = "Malformed Json Request"
-            error_rsp['error_code'] = ERR_CODE_INVALID_JSON
-        
-        ## check keys/keytypes ##
-        if not fail:
-            badkeys, missingkeys = check_json_errors(data, expected_keys)
-
-            if len(badkeys) > 0:
-                error_rsp['message'] = f"Invalid field type: {badkeys[0]}"
-                error_rsp['error_code'] = ERR_CODE_INVALID_JSON
-                fail = True
-            elif len(missingkeys) > 0:
-                error_rsp['message'] = f"Missing field: {missingkeys[0]}"
-                error_rsp['error_code'] = ERR_CODE_INVALID_JSON
-                fail = True
-
-        # check param ID len ##
-        if not fail:
-            if len(data['param_ids']) < 1:
-                error_rsp['message'] = f"No parameter IDs supplied"
-                error_rsp['error_code'] = ERR_CODE_INVALID_JSON
-                fail = True
-        
-        ## check rate ##
-        if not fail:
-            if data['rate'] not in API_WEBSOCKET_RATES:
-                error_rsp['message'] = f"Invalid rate"
-                error_rsp['error_code'] = ERR_CODE_INVALID_JSON
-                fail = True          
-
-        ## get device ##
-        if not fail:
-            device = await get_device_object(data['dev_id'])
-            
-            if device == None:
-                error_rsp['message'] = f"Missing field: {missingkeys[0]}"
-                error_rsp['error_code'] = ERR_CODE_INVALID_DEV_ID
-                fail = True
-
-        ## get peripheral ##
-        if not fail:
-            periph = await self.get_peripheral_object(data['dev_id'], data['periph_id'])
-            if periph == None:
-                error_rsp['message'] = f"Invalid Peripheral ID"
-                error_rsp['error_code'] = ERR_CODE_INVALID_PERIPH_ID
-                fail = True              
-
-        ## get parameters ##
-        if not fail:
-            for param_id in data['param_ids']:
-
-                param = await get_param_object(data['dev_id'], data['periph_id'], param_id)
-
-                if param == None:
-                    error_rsp['message'] = f"Invalid Parameter ID: {param_id}"
-                    error_rsp['error_code'] = ERR_CODE_INVALID_PARAM_ID
-                    fail = True
-                elif param.is_streamable == False:
-                    error_rsp['message'] = f"Parameter {param.name} is not streamable"
-                    error_rsp['error_code'] = ERR_CODE_INVALID_REQUEST
-                    fail = True   
+        if not self.established:
+            start_data = message['text']
+            if not check_valid_tags(start_data, self.start_tags):
+                print("Invalid stream request")
+            else:
+                (fail, rsp, url) = build_request(start_data)
+                if(fail):
+                    print("Error whilst building the request")
                 else:
-                    stream_params.appen(param)
+                    ## need to get the expected packet structure here
+                    for n in start_data['periph_ids']:
+                        p = await get_periph_object(start_data['dev_id'])
 
-        ## send the http stream request ##
-        if not fail:
-            print("Sending request for websocket connection")
-            request = {
-                'periph_id': periph.periph_id,
-                'param_ids': [x.param_id for x in stream_params],
-                'rate': data['rate'],
-                'ext': API_WEBSOCKET_INCOMMING_STREAM_EXTENSION
-            }
 
-            url = "http://" + \
-                device.ip_address +\
-                ":" + \
-                str(device.port) + \
-                device.cmd_url
 
-            try:
-                async with aiohttp.ClientSession() as s:
-                    async with s.post(url, json=request) as rsp:
-                        status = rsp.status
-                        await self.send(json.dumps({"data": "> Got response to stream request [" + str(status) + "]", "code": status}))
-                        data = await rsp.json()
-                        ## check for correct response from the device ##
-                        if "rsp_type" in data.keys() and data["rsp_type"] == RSP_TYPE_OK:
-                            print("Got a success response from the device")
+
+
+
+
+    async def websocket_bridge(self, url: str, init_packet: dict, pkt_format: dict):
+        cancelled = False
+        pkt_counter = 0
+        ## do the bridging between device and the client ##
+        timeout = aiohttp.ClientTimeout(total=30)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.ws_connect(url) as ws:
+                ## establish the WS connection & send initial packet...
+                if not self.established:
+                    await ws.send_str(json.dumps(init_packet))
+                    try:
+                        rsp = await ws.receive_str()
+                        rsp_data = json.loads(rsp)
+                        if rsp_data['rsp_type'] != RSP_TYPE_OK:
+                            error_rsp = error_response(ERR_CODE_MISSING_FIELD, "err")
+                            await self.send(json.dumps(error_rsp))
+                        else:
+                            # connection established - now wait for the data!
+                            self.established = True
+                    except TypeError:
+                        print("Got binary type response!")
+                ## connection est - expecting binary data
+                else
+
+
+
+# class ClientStream(AsyncWebsocketConsumer):
+
+#     """ plan for streamer... 
+#         - want client to select streaming parameters then open up a websocket to this page
+#         - start a websocket server
+#         - send http request to the device requesting a stream
+#         - wait for ok response 
+#         - Device will connect to DeviceStream
+#         - add client to a channel-layer
+#         - ideally route traffic as low-effort as possible between device & client
+#         - deal with cleanup, etc.
+#     """
+
+
+#     async def websocket_connect(self, message):
+#         """ add the client to the channel layer? 
+#             send the http request to the device
+#         """
+#         fail = False
+#         device = None
+#         periph = None
+#         stream_params = []
+
+#         error_rsp = {
+#             "message": "",
+#             "error_code": 0,
+#         }
+
+#         expected_keys = [
+#             ("periph_id", int),
+#             ("param_ids", list),
+#             ("rate", int),
+#             ("host", str),
+#         ]
+
+#         ## Whole heap a error checking - JSON first ##
+#         try:
+#             data = json.loads(message)
+#         except json.JSONDecodeError:
+#             print("Error decoding json")
+#             fail = True
+#             error_rsp['message'] = "Malformed Json Request"
+#             error_rsp['error_code'] = ERR_CODE_INVALID_JSON
+        
+#         ## check keys/keytypes ##
+#         if not fail:
+#             badkeys, missingkeys = check_json_errors(data, expected_keys)
+
+#             if len(badkeys) > 0:
+#                 error_rsp['message'] = f"Invalid field type: {badkeys[0]}"
+#                 error_rsp['error_code'] = ERR_CODE_INVALID_JSON
+#                 fail = True
+#             elif len(missingkeys) > 0:
+#                 error_rsp['message'] = f"Missing field: {missingkeys[0]}"
+#                 error_rsp['error_code'] = ERR_CODE_INVALID_JSON
+#                 fail = True
+
+#         # check param ID len ##
+#         if not fail:
+#             if len(data['param_ids']) < 1:
+#                 error_rsp['message'] = f"No parameter IDs supplied"
+#                 error_rsp['error_code'] = ERR_CODE_INVALID_JSON
+#                 fail = True
+        
+#         ## check rate ##
+#         if not fail:
+#             if data['rate'] not in API_WEBSOCKET_RATES:
+#                 error_rsp['message'] = f"Invalid rate"
+#                 error_rsp['error_code'] = ERR_CODE_INVALID_JSON
+#                 fail = True          
+
+#         ## get device ##
+#         if not fail:
+#             device = await get_device_object(data['dev_id'])
+            
+#             if device == None:
+#                 error_rsp['message'] = f"Missing field: {missingkeys[0]}"
+#                 error_rsp['error_code'] = ERR_CODE_INVALID_DEV_ID
+#                 fail = True
+
+#         ## get peripheral ##
+#         if not fail:
+#             periph = await self.get_peripheral_object(data['dev_id'], data['periph_id'])
+#             if periph == None:
+#                 error_rsp['message'] = f"Invalid Peripheral ID"
+#                 error_rsp['error_code'] = ERR_CODE_INVALID_PERIPH_ID
+#                 fail = True              
+
+#         ## get parameters ##
+#         if not fail:
+#             for param_id in data['param_ids']:
+
+#                 param = await get_param_object(data['dev_id'], data['periph_id'], param_id)
+
+#                 if param == None:
+#                     error_rsp['message'] = f"Invalid Parameter ID: {param_id}"
+#                     error_rsp['error_code'] = ERR_CODE_INVALID_PARAM_ID
+#                     fail = True
+#                 elif param.is_streamable == False:
+#                     error_rsp['message'] = f"Parameter {param.name} is not streamable"
+#                     error_rsp['error_code'] = ERR_CODE_INVALID_REQUEST
+#                     fail = True   
+#                 else:
+#                     stream_params.appen(param)
+
+#         ## send the http stream request ##
+#         if not fail:
+#             print("Sending request for websocket connection")
+#             request = {
+#                 'periph_id': periph.periph_id,
+#                 'param_ids': [x.param_id for x in stream_params],
+#                 'rate': data['rate'],
+#                 'ext': API_WEBSOCKET_INCOMMING_STREAM_EXTENSION
+#             }
+
+#             url = "http://" + \
+#                 device.ip_address +\
+#                 ":" + \
+#                 str(device.port) + \
+#                 device.cmd_url
+
+#             try:
+#                 async with aiohttp.ClientSession() as s:
+#                     async with s.post(url, json=request) as rsp:
+#                         status = rsp.status
+#                         await self.send(json.dumps({"data": "> Got response to stream request [" + str(status) + "]", "code": status}))
+#                         data = await rsp.json()
+#                         ## check for correct response from the device ##
+#                         if "rsp_type" in data.keys() and data["rsp_type"] == RSP_TYPE_OK:
+#                             print("Got a success response from the device")
                         
-            except aiohttp.ClientConnectionError:
-                await self.send(json.dumps({"message": "Error: Device is unnreachable!", "code": 504}))
-                fail = True
-            except aiohttp.InvalidURL:
-                await self.send(json.dumps({"message": "Error: Invalid URL!"}))
-                fail = True
+#             except aiohttp.ClientConnectionError:
+#                 await self.send(json.dumps({"message": "Error: Device is unnreachable!", "code": 504}))
+#                 fail = True
+#             except aiohttp.InvalidURL:
+#                 await self.send(json.dumps({"message": "Error: Invalid URL!"}))
+#                 fail = True
 
-        if not fail:
-            print("Device should be connecting to streaming component right about now...")
+#         if not fail:
+#             print("Device should be connecting to streaming component right about now...")
 
-        if not fail:
-            ## check this works!
-            Clients.objects.create(channel_name="stream")
-            await self.channel_layer.group_add("stream", self.channel_name)
+#         if not fail:
+#             ## check this works!
+#             Clients.objects.create(channel_name="stream")
+#             await self.channel_layer.group_add("stream", self.channel_name)
 
-        return super().websocket_connect(message)
+#         return super().websocket_connect(message)
 
-    # async def receive(self, text_data=None, bytes_data=None):
-    #     print("got message")
-    #     if bytes_data is not None:
-    #         bytestring = bytes_data.decode("utf-8")
-    #         print(bytestring)
-    #     elif text_data is not None:
-    #         print(text_data)
-    #     else:
-    #         print("no data")
-    #     return super().receive(text_data=text_data, bytes_data=bytes_data)
+#     # async def receive(self, text_data=None, bytes_data=None):
+#     #     print("got message")
+#     #     if bytes_data is not None:
+#     #         bytestring = bytes_data.decode("utf-8")
+#     #         print(bytestring)
+#     #     elif text_data is not None:
+#     #         print(text_data)
+#     #     else:
+#     #         print("no data")
+#     #     return super().receive(text_data=text_data, bytes_data=bytes_data)
 
-    async def websocket_receive(self, message):
-        return super().websocket_receive(message)
+#     async def websocket_receive(self, message):
+#         return super().websocket_receive(message)
 
-    async def websocket_send(self, text_data=None, bytes_data=None, close=False):
-        return super().send(text_data=text_data, bytes_data=bytes_data, close=close)
+#     async def websocket_send(self, text_data=None, bytes_data=None, close=False):
+#         return super().send(text_data=text_data, bytes_data=bytes_data, close=close)
 
-    async def websocket_disconnect(self, message):
-        Clients.objects.filter(channel_name="stream").delete()
-        return super().websocket_disconnect(message)
+#     async def websocket_disconnect(self, message):
+#         Clients.objects.filter(channel_name="stream").delete()
+#         return super().websocket_disconnect(message)
     
 
 

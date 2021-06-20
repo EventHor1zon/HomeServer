@@ -4,35 +4,127 @@
 
 {% block content %}
 
-<div id="center">
+<div class="center">
 
-<!-- build a table of streamable devices, periphs, params -->
-<h2> Streaming Interface v0.1</h2>
+    <div style="grid-template-rows: 3fr;">
+        <!-- streaming options -->
+        <h2> Streaming Interface v0.1</h2>
+        </br>
+        <input type="radio" id="1hz" name="rate" value="0" align="right">
+        <label for="1hz">1 Hz</label><br>
+        <input type="radio" id="5hz" name="rate" value="1" align="right">
+        <label for="5hz">5 Hz</label><br>
+        <input type="radio" id="10hz" name="rate" value="2" align="right">
+        <label for="10hz">10 Hz</label><br>
 
-<p> Pick parameters to stream - currently only a single peripheral is supported </p>
-
-
-    <div class="subtable" style="grid-template-columns: 2fr 1fr;">
-
-        <div class="subtable_header"> Parameter </div>
-        <div class="subtable_header"> Select </div>
-
-        {% for param in stream_params %}
-            <div class="subtable_element">{{ param.name }}</div>
-            <div class="subtable_element"><input type="checkbox"></div>
-        {% endfor %}
-
+        <input type="button" id="start">Start</input>
     </div>
-
-
-
-
-
-
-
-
-
+    <div>
+        <p> Pick parameters to stream - currently only a single peripheral is supported </p>
+        <!-- build a table of streamable devices, periphs, params -->
+        {% for peripheral in stream_periphs %}
+            <h2>{{peripheral.name}}</h2>
+            <div class="subtable" style="grid-template-columns: 2fr 1fr;">
+                <div class="subtable_header"> Parameter </div>
+                <div class="subtable_header"> Select </div>
+                {% for param in peripheral.parameter_set.all  %}
+                    {% if param.is_streamable %}
+                            <div class="subtable_element">{{param.name}}</div>
+                            <div class="subtable_element"><input name="select" type="checkbox" id="{{param.param_id}}.{{peripheral.periph_id}}.{{peripheral.device.dev_id}}"></div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </div>
+        <div>
+        <p> graph here </p>
+        </div>
+    </div>
 </div>
+
+
+<script src="https://canvasjs.com/assets/script/canvasjs.min.js"></script>
+<script type="text/javascript">
+
+
+    var num_datas = 0;
+
+    const ws = new WebSocket('ws://' + window.location.host + '/ws/stream/');
+
+    ws.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        console.log(data);
+    }
+
+    ws.onclose = function(e) {
+        console.log("ws closed");
+    }
+
+
+    var go_button = document.getElementById('start');
+    var selects = document.getElementsByName('select');
+    var rates = document.getElementsByName('rate');
+
+    go_button.onclick = function(e) {
+
+        console.log(selects)
+        var selected_ids = [];
+        var periph_id = 0;
+        var dev_id = 0;
+        for(var i=0; i< selects.length; i++) {
+            if(selects[i].checked) {
+                if(i == 0) {
+                    var x = selects[i].id.split(".")[1];
+                    var ds = selects[i].id.split(".")[2];
+                    periph_id = parseInt(x);
+                    dev_id = parseInt(ds);
+                }
+                else {
+                    var y = selects[i].id.split(".")[1];
+                    var new_pid = parseInt(y);
+                    if(new_pid != periph_id) {
+                        console.log("Streaming from >1 peripherals is not implemented");
+                        return;
+                    }
+                }
+                var z = selects[i].id.split(".")[0];
+                var zn = parseInt(z);
+                selected_ids.push(zn);
+            }
+        }
+
+        var rate = 0;
+        for(var j=0; j<rates.length; j++) {
+            if(rates[j].checked) {
+                rate = rates[j].value;
+                break;
+            }
+        }
+
+        console.log(selected_ids);
+        console.log(periph_id);
+        console.log(rate);
+        
+        if(selected_ids.length == 0 || dev_id == 0 || periph_id == 0) {
+            return;
+        }
+
+        console.log("Sending data");
+
+        ws.send(JSON.stringify({
+            "dev_id": dev_id,
+            "periph_id": periph_id,
+            "param_ids": selected_ids,
+            "rate": rate,
+            "type": 0,
+        }));
+
+        return;
+    }
+
+
+
+</script>
 
 
 {% endblock content %}

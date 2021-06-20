@@ -128,9 +128,7 @@ class StreamView(View):
         stream_devices = list(set([x.peripheral.device for x in stream_params]))
 
         context = {
-            "stream_params": stream_params,
             "stream_periphs": stream_periphs,
-            "stream_devices": stream_devices,
         }
 
         return HttpResponse(template.render(context, request))
