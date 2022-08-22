@@ -1,33 +1,32 @@
-{% extends 'CC/base.html' %}
-
-{% block content %}
+{% extends 'CC/base.html' %} {% block content %}
 <div id="center" style="color: white">
     <h1> Home </h1>
-    <p>  This is the home page for the Hermes Server command control centre </p>
-    <h6> Server Details </p>
-    <p/>
-    <table style="width: 80%; justify: 'centre'">
-        <tr> 
-            <td> <b>Server Address</b> : </td>
-            <td> <b> {{ ip }} </b> </td>
-            <td> <b></b> </td>
-        </tr>
-        <tr> 
-            <td> <b>Server Uptime</b> : </td>
-            <td> <b> {{ uptime }} </b> </td>
-            <td> <b></b> </td>
-        </tr>
-        <tr>
-            <td> <b>Connected Devices</b> : </td>
-            <td> <b> {{ connected_devices }} </b> </td>
-            <td> <b></b> </td>
-        </tr>
-        <tr>
-            <td> <b>Database Type</b> : </td>
-            <td> <b> {{ db_type }} </b> </td>
-            <td> <b></b> </td>
-        </tr>
-    </table>
+    <p> This is the home page for the Hermes Server command control centre </p>
+    <br>
+    <br>
+    <h3> Server Details </p>
+        <table>
+            <tr>
+                <td> <b>Server Address</b> : </td>
+                <td> <b> {{ ip }} </b> </td>
+                <td> <b></b> </td>
+            </tr>
+            <tr>
+                <td> <b>Server Uptime</b> : </td>
+                <td> <b> {{ uptime }} </b> </td>
+                <td> <b></b> </td>
+            </tr>
+            <tr>
+                <td> <b>Connected Devices</b> : </td>
+                <td> <b> {{ connected_devices }} </b> </td>
+                <td> <b></b> </td>
+            </tr>
+            <tr>
+                <td> <b>Database Type</b> : </td>
+                <td> <b> {{ db_type }} </b> </td>
+                <td> <b></b> </td>
+            </tr>
+        </table>
 </div>
 
 {% endblock %}

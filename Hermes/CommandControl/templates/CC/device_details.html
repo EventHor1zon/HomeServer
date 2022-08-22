@@ -1,28 +1,27 @@
-{% extends 'CC/base.html' %}
-{% load mytags %}
-
-{% block content %}
-<div id="center" style="color: antiquewhite">
+{% extends 'CC/base.html' %} {% load mytags %} {% block content %}
+<div class="center" style="color: antiquewhite">
     <h2> Device Details </h2>
     {% if device.image %}
-        <img src="{{ device.image.url }}" alt="image" height="200px" width="240px" align="right">
-   {% endif %}
+    <img src="{{ device.image.url }}" alt="image" height="200px" width="240px" align="right"> {% endif %}
     <table>
         <tr>
             <td><strong> Device Name</strong></td>
             <td><b>{{ device.name }}</b></td>
         </tr>
-        <tr><td><strong> Device Type</strong></td>
+        <tr>
+            <td><strong> Device Type</strong></td>
             <td><b>{{ device.dev_type }}</b></td>
         </tr>
-        <tr><td><strong> Device ID</strong></td>
+        <tr>
+            <td><strong> Device ID</strong></td>
             <td><b>{{ device.dev_id|ashex }} </b></td>
         </tr>
-        <tr><td><strong> Network Address</strong></td>
+        <tr>
+            <td><strong> Network Address</strong></td>
             <td> <i>{{ device.ip_address }}:{{ device.api_port }}</i></td>
         </tr>
         <tr>
-            <td><strong> State</strong></td>        
+            <td><strong> State</strong></td>
             <td>{% if device.sleep_state %} <i style="color: red;">SLEEPING</i> {% else %} <i style="color: green;">ACTIVE</i> {% endif %}</td>
         </tr>
         <tr>
@@ -36,15 +35,21 @@
     <table>
         <tr>
             <th> Peripheral </th>
-            <th> ID         </th> 
+            <th> ID </th>
+            <th> Parameters </th>
+            <th> Type </th>
         </tr>
         {% for periph in device.peripheral_set.all %}
-            <tr>
-                <td><a href="{% url 'peripheral' periph.id %}">{{ periph.name }}</a> </td>
-                <td>{{ periph.id|ashex }}</td>
-            </tr>
+        <tr>
+            <td><a href="{% url 'peripheral' periph.id %}">{{ periph.name }}</a> </td>
+            <td>{{ periph.id|ashex }}</td>
+            <td>{{ periph.num_params }}</td>
+            <td>{{ periph.periph_type }}</td>
+        </tr>
         {% empty %}
-            <tr><td> This device has no peripherals! </td></tr>
+        <tr>
+            <td> This device has no peripherals! </td>
+        </tr>
         {% endfor %}
     </table>
 </div>

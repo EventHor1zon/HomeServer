@@ -30,8 +30,7 @@
         </div>
         {% endfor %}
     </div>
-    <div>
-        <p> graph here </p>
+    <div id="chartContainer">
     </div>
 </div>
 </div>
@@ -40,12 +39,84 @@
 <script src="https://canvasjs.com/assets/script/canvasjs.min.js"></script>
 <script type="text/javascript">
     var num_datas = 0;
+    var yVal = 100;
+    var xVal = 0;
+    var d_counter = 0;
+    var updateInterval = 1000;
+    var dataLength = 50;
+    /** empty storage for data **/
+    var chart_data = [
+        [{
+            x: 0,
+            y: 0
+        }],
+        [{
+            x: 0,
+            y: 0
+        }],
+        [{
+            x: 0,
+            y: 0
+        }],
+        [{
+            x: 0,
+            y: 0
+        }],
+        [{
+            x: 0,
+            y: 0
+        }],
+        [{
+            x: 0,
+            y: 0
+        }]
+    ];
+
 
     const ws = new WebSocket('ws://' + window.location.host + '/ws/stream/');
+
+    var chart = new CanvasJS.Chart("chartContainer", {
+        data: [{
+            type: "line",
+            dataPoints: [
+                chart_data[0],
+                chart_data[1],
+                chart_data[2],
+                chart_data[3],
+                chart_data[4],
+                chart_data[5],
+            ],
+        }]
+    });
+
+
 
     ws.onmessage = function(e) {
         const data = JSON.parse(e.data);
         console.log(data);
+
+
+        if (data['packet_type'] == "ws_data") {
+            var c = 0;
+            delete data.packet_type;
+            for (const key in data) {
+                console.log("Pushing data to list");
+                var d = {
+                    x: d_counter,
+                    y: data[key],
+                };
+
+                chart_data[c].push(d);
+                c++;
+                d_counter++;
+            }
+            console.log(chart_data[0]);
+            chart.render();
+
+            if (chart_data[0].length > dataLength) {
+                chart_data[0].shift();
+            }
+        }
     }
 
     ws.onclose = function(e) {

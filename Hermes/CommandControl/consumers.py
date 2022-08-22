@@ -195,7 +195,7 @@ def is_invalid_param(d_id, p_id, prm_id):
 
 ## Checks if is an existing device
 @database_sync_to_async
-def is_existing_device(d_id):
+def is_existing_device(d_id: int):
     exists = False
     try:
         D = models.Device.objects.get(dev_id=d_id)
@@ -239,7 +239,7 @@ def build_new_device(d_info: dict):
 
 ## create a new periph database entry 
 @database_sync_to_async
-def build_new_peripheral(p_info):
+def build_new_peripheral(p_info: dict):
     success = True
 
     try:
@@ -275,7 +275,7 @@ def build_new_peripheral(p_info):
 
 ## create a new param database entry 
 @database_sync_to_async
-def build_new_parameter(prm_info, dev_id):
+def build_new_parameter(prm_info: dict, dev_id: int):
     success = True
 
     try:
@@ -813,22 +813,17 @@ class DeviceStream(AsyncWebsocketConsumer):
                             print(incomming.data)
                         elif incomming.type == WSMsgType.BINARY:
                             print("Got a bin packet")
-                            print(type(incomming.data))
                             bin_data = incomming.data[:-1]
                             print(f"bin data: {bin_data} {type(bin_data)}")
                             data = struct.unpack(fmt, bin_data)
-                            print(f"Done unpacking {data}")
                             parsed = []                
                             ## remove the delimiters
                             for d in data:
                                 if d != API_WEBSOCKET_DELIMITER_CHAR:
                                     parsed.append(d)
                             ## length check 
-                            print(parsed)
                             if len(parsed) != pkt_format['items']:
-                                print(parsed)
-                                print("vs")
-                                print(pkt_format['names'])
+                                print("Unexpected length")
                                 raise AttributeError
                             
                             ## add unpacked data to outgoing

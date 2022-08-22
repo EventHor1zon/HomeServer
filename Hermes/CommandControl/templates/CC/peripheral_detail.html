@@ -1,15 +1,12 @@
-{% extends 'CC/base.html'%}
-
-{% block content %}
-{% load mytags %}
+{% extends 'CC/base.html'%} {% block content %} {% load mytags %}
 
 
 
 
 
 <div class="center">
-    <h3> Name:  {{ peripheral.name }} </h3>
-    <h3> ID:  {{ peripheral.periph_id|ashex }} </h3>
+    <h3> Name: {{ peripheral.name }} </h3>
+    <h3> ID: {{ peripheral.periph_id|ashex }} </h3>
     <h3> Parameters: {{ peripheral.parameter_set.all|length }} </h3>
     <h3> State: </h3>
     <h3> Power: </h3>
@@ -23,123 +20,117 @@
         <div class="subtable_header"> Action </div>
         <div class="subtable_header"> Details </div>
 
-         {% for param in peripheral.parameter_set.all %}
-            <div class="subtable_element">{{ param.name }}</div>
-            <div class="subtable_element">{% if param.is_getable %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
-            <div class="subtable_element">{% if param.is_setable %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
-            <div class="subtable_element">{% if param.is_action %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
-            <div class="subtable_element"> <button type="button" class="collapsible" style="background-color: black; color: rgb(250, 115, 0)"><b>+</b></button></div>
-            <div class="subtable_collapsible" id="{{param.param_id}}">
-                {% if param.is_getable %}
-                    <button style="background-color: black; color: rgb(250, 115, 0)" type="button" class="param_get" id="{{ param.param_id }}"> Get </button> 
-                    <input class="get_val" id="get_val_{{param.param_id}}"/><i>{{ param.units }}</i>
-                <b style="align: right"> Value: {{ param.last_value }} </b>
-                {% endif %}
-                {% if param.is_setable %}
-                    <br><button  style="background-color: black; color: rgb(250, 115, 0)" type="button" class="param_set" id="{{ param.param_id }}"> Set </button> 
-                    <input class="set_val" id="set_val_{{param.param_id}}" max={{param.max_value}}/>
-                    <b> (Max): {{ param.last_value }} </b>
-                    <!-- A hacky solution to pass the data type in -->
-                    <p hidden id="type_val_{{param.param_id}}">{{param.data_type}}</p>
-                {% endif %}
-                {% if param.is_action %}
-                    <button style="background-color: black; color: rgb(250, 115, 0)" type="button" class="param_act" id="{{ param.param_id }}"> Do </button>
-                {% endif %}
-            </div>
+        {% for param in peripheral.parameter_set.all %}
+        <div class="subtable_element">{{ param.name }}</div>
+        <div class="subtable_element">{% if param.is_getable %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
+        <div class="subtable_element">{% if param.is_setable %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
+        <div class="subtable_element">{% if param.is_action %} <b style="color: lawngreen">&Delta; {% else %} <b style="color: red">&lambda; {% endif %}</b></div>
+        <div class="subtable_element"> <button type="button" class="collapsible" style="background-color: black; color: rgb(250, 115, 0)"><b>+</b></button></div>
+        <div class="subtable_collapsible" id="{{param.param_id}}">
+            {% if param.is_getable %}
+            <button style="background-color: black; color: rgb(250, 115, 0)" type="button" class="param_get" id="{{ param.param_id }}"> Get </button>
+            <input class="get_val" id="get_val_{{param.param_id}}" /><i>{{ param.units }}</i>
+            <b style="text-align: right"> Value: {{ param.last_value }} </b> {% endif %} {% if param.is_setable %}
+            <br><button style="background-color: black; color: rgb(250, 115, 0)" type="button" class="param_set" id="{{ param.param_id }}"> Set </button>
+            <input class="set_val" id="set_val_{{param.param_id}}" max={{param.max_value}}/>
+            <b> (Max): {{ param.last_value }} </b>
+            <!-- A hacky solution to pass the data type in -->
+            <p hidden id="type_val_{{param.param_id}}">{{param.data_type}}</p>
+            {% endif %} {% if param.is_action %}
+            <button style="background-color: black; color: rgb(250, 115, 0)" type="button" class="param_act" id="{{ param.param_id }}"> Do </button> {% endif %}
+        </div>
         {% endfor %}
     </div>
     {% endif %}
 
 
-<script>
+    <script>
+        const datachannel = new WebSocket(
+            'ws://' +
+            window.location.host +
+            "/ws/peripheral/"
+        );
 
-    const datachannel = new WebSocket(
-        'ws://'
-        + window.location.host
-        + "/ws/peripheral/"
-    );
+        datachannel.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            console.log(data);
+            var source_param = data['param_id'];
+            var sub;
+            var subs = document.querySelectorAll('.get_val');
+            for (var i = 0; i < subs.length; i++) {
+                var update = 'get_val_' + source_param;
+                if (subs[i].id == update) {
+                    sub = subs[i];
+                    sub.value = data['data'];
+                }
+            }
+        };
 
-    datachannel.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        console.log(data);
-        var source_param = data['param_id'];
-        var sub;
-        var subs = document.querySelectorAll('.get_val');
-        for(var i=0; i<subs.length; i++) {
-            var update = 'get_val_' + source_param;
-            if(subs[i].id == update) {
-                sub = subs[i];
-                sub.value = data['data'];
+
+        datachannel.onclose = function(e) {
+            console.error("Websocket closed unexpectedly!");
+        }
+
+        var get_buttons = document.getElementsByClassName('param_get');
+
+        for (var i = 0; i < get_buttons.length; i++) {
+            get_buttons[i].onclick = function(e) {
+                var source = e.originalTarget.id;
+                const msg = "GET";
+                datachannel.send(JSON.stringify({
+                    "dev_id": "{{ peripheral.device.dev_id }}",
+                    "periph_id": "{{ peripheral.periph_id }}",
+                    "param_id": source,
+                    "cmd_type": msg,
+                    "data": 0,
+                    "data_type": 0,
+                }));
+            };
+        };
+
+        var set_buttons = document.getElementsByClassName('param_set');
+
+        for (var i = 0; i < set_buttons.length; i++) {
+            set_buttons[i].onclick = function(e) {
+                var source = e.originalTarget.id;
+                var source_name = "set_val_" + source;
+                console.log(source)
+                console.log(source_name)
+                type_id = "type_val_" + source;
+                console.log(type_id)
+                var type = document.getElementById(type_id);
+                console.log(type.innerText)
+                var type_n = parseInt(type.innerText)
+                var input = document.getElementById(source_name).value;
+                const msg = "SET";
+                datachannel.send(JSON.stringify({
+                    "dev_id": "{{ peripheral.device.dev_id }}",
+                    "periph_id": "{{ peripheral.periph_id }}",
+                    "param_id": source,
+                    "cmd_type": msg,
+                    "data": input,
+                    "data_type": type_n,
+                }));
+            };
+        }
+
+        var act_buttons = document.getElementsByClassName('param_act');
+
+        for (var i = 0; i < act_buttons.length; i++) {
+            act_buttons[i].onclick = function(e) {
+                var source = e.originalTarget.id;
+                const msg = "ACT";
+                datachannel.send(JSON.stringify({
+                    "dev_id": "{{ peripheral.device.dev_id }}",
+                    "periph_id": "{{ peripheral.periph_id }}",
+                    "param_id": source,
+                    "cmd_type": msg,
+                    "data": 0,
+                    "data_type": 0,
+                }));
             }
         }
-    };
-
-
-    datachannel.onclose = function(e) {
-        console.error("Websocket closed unexpectedly!");
-    }
-    
-    var get_buttons = document.getElementsByClassName('param_get');
-
-    for(var i=0; i< get_buttons.length; i++) {
-        get_buttons[i].onclick = function(e) {
-            var source = e.originalTarget.id;
-            const msg = "GET";
-            datachannel.send(JSON.stringify({
-                "dev_id": "{{ peripheral.device.dev_id }}",
-                "periph_id": "{{ peripheral.periph_id }}",
-                "param_id": source,
-                "cmd_type": msg,
-                "data": 0,
-                "data_type": 0,
-            }));
-        };
-    };
-
-    var set_buttons = document.getElementsByClassName('param_set');
-
-    for(var i=0; i< set_buttons.length; i++) {
-        set_buttons[i].onclick = function(e) {
-            var source = e.originalTarget.id;
-            var source_name = "set_val_" + source;
-            console.log(source)
-            console.log(source_name)
-            type_id = "type_val_" + source;
-            console.log(type_id)
-            var type = document.getElementById(type_id);
-            console.log(type.innerText)
-            var type_n = parseInt(type.innerText)
-            var input = document.getElementById(source_name).value;
-            const msg = "SET";
-            datachannel.send(JSON.stringify({
-                "dev_id": "{{ peripheral.device.dev_id }}",
-                "periph_id": "{{ peripheral.periph_id }}",
-                "param_id": source,
-                "cmd_type": msg,
-                "data": input,
-                "data_type": type_n,
-            }));
-        };
-    }
-
-    var act_buttons = document.getElementsByClassName('param_act');
-
-    for(var i=0; i<act_buttons.length; i++) {
-        act_buttons[i].onclick = function(e) {
-            var source = e.originalTarget.id;
-            const msg = "ACT";
-            datachannel.send(JSON.stringify({
-                "dev_id": "{{ peripheral.device.dev_id }}",
-                "periph_id": "{{ peripheral.periph_id }}",
-                "param_id": source,
-                "cmd_type": msg,
-                "data": 0,
-                "data_type": 0,
-            }));
-        }
-    }
-    
-</script>
+    </script>
 
 
 </div>

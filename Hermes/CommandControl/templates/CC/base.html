@@ -1,23 +1,22 @@
-<!DOCTYPE html>
+<!DOCTYPE html> {% load static %}
 
-{% load static %}
-<head >
+<head>
     <meta charset="utf-8">
     <script src="https://kit.fontawesome.com/246932351c.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-ygbV9kiqUc6oa4msXn9868pTtWMgiQaeYH7/t7LECLbyPA2x65Kgf80OJFdroafW" crossorigin="anonymous"></script>
-    <link rel="stylesheet" type="text/css" href="{% static 'CC/css/style.css' %}"> 
+    <link rel="stylesheet" type="text/css" href="{% static 'CC/css/style.css' %}">
     <title>
         "Welcome to PiCore"
     </title>
 </head>
 
-<body >
+<body>
     <div class="main">
         <div class="banner" style="background-image: url({% static 'CC/images/orangenetbanner.jpg'%});"></div>
 
-        <div class="navbar" >
+        <div class="navbar">
             <a href="/CC/">Home</a>
-            <a href="#">CommandCenter</a>
+            <a href="/CC/commands">CommandCenter</a>
             <a href="/CC/discover">Discover</a>
             <a href="/CC/ledcontrol">Led Control</a>
             <a href="/CC/stream">Stream</a>
@@ -25,24 +24,22 @@
                 <button class="dropbtn">Devices</button>
                 <div class="dropdown-content">
                     {% if devices %} {% for dev in devices %}
-                        <a href={% url 'device' dev.id %}> {{dev.name}} </a>
-                    {% endfor %} {% endif %}
+                    <a href={% url 'device' dev.id %}> {{dev.name}} </a> {% endfor %} {% endif %}
                 </div>
-            </div> 
+            </div>
         </div>
 
-        <div id="center-left"  style="background-color: rgb(5, 5, 5);">
-            left centre 
+        <div id="center-left" style="background-color: rgb(5, 5, 5);">
+            left centre
         </div>
 
         <!-- Content Main -->
-        {% block content %}
-        {% endblock %}
+        {% block content %} {% endblock %}
 
         <div id="center-right" style="background-color: rgb(5, 5, 5);">c-right</div>
 
-        <div id="lower-left"> 
-            left bottom 
+        <div id="lower-left">
+            left bottom
         </div>
 
         <div id="lower-center"> Select actions </div>
@@ -50,20 +47,19 @@
     </div>
 
     <script>
-    var coll = document.getElementsByClassName("collapsible");
-    var i;
+        var coll = document.getElementsByClassName("collapsible");
+        var i;
 
-    for (i = 0; i < coll.length; i++) {
-    coll[i].addEventListener("click", function() {
-        this.classList.toggle("active");
-        var content = this.parentNode.nextElementSibling;
-        if (content.style.display === "block") {
-        content.style.display = "none";
-        } else {
-        content.style.display = "block";
+        for (i = 0; i < coll.length; i++) {
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.parentNode.nextElementSibling;
+                if (content.style.display === "block") {
+                    content.style.display = "none";
+                } else {
+                    content.style.display = "block";
+                }
+            });
         }
-    });
-    }
     </script>
 </body>
-

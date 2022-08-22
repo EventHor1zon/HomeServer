@@ -58,17 +58,17 @@ class PeripheralView(DetailView):
 
 
 
-def device_details(request, device_id):
-    device = get_object_or_404(Device, pk=device_id)
-    template=  loader.get_template("CC/device_details.html")
-    context = {
-        "device": device,
-    }
-    return HttpResponse(template.render(context, request))
+# def device_details(request, device_id):
+#     device = get_object_or_404(Device, pk=device_id)
+#     template=  loader.get_template("CC/device_details.html")
+#     context = {
+#         "device": device,
+#     }
+#     return HttpResponse(template.render(context, request))
 
 
-def peripheral_details(request):
-    return HttpResponse("Hi")
+# def peripheral_details(request):
+#     return HttpResponse("Hi")
 
 
 
@@ -114,6 +114,18 @@ class LedControlView(View):
         return HttpResponse(template.render(context, request))
 
 
+class CommandsView(View):
+
+    def get(self, request):
+
+        template = loader.get_template("CC/commands.html")
+        context = {
+            "devices": Device.objects.all(),
+        }
+        return HttpResponse(template.render(context, request))
+
+
+
 class StreamView(View):
 
     def __init__(self, **kwargs):
@@ -122,12 +134,13 @@ class StreamView(View):
 
     def get(self, request):
         template = loader.get_template("CC/stream.html")
-
+        devices = Device.objects.all()
         stream_params = Parameter.objects.filter(is_streamable=True)
         stream_periphs = list(set([x.peripheral for x in stream_params]))
         stream_devices = list(set([x.peripheral.device for x in stream_params]))
 
         context = {
+            "devices": devices,
             "stream_periphs": stream_periphs,
         }
 

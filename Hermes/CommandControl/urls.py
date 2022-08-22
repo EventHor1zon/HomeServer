@@ -11,4 +11,5 @@ urlpatterns = [
     path('discover', views.DiscoverView.as_view(), name="discover"),
     path('ledcontrol', views.LedControlView.as_view(), name="ledcontrol"),
     path('stream', views.StreamView.as_view(), name="stream"),
+    path('commands', views.CommandsView.as_view(), name="commands"),
 ]

@@ -185,7 +185,7 @@ class RequestPacket():
                     self.response.update(response_data)
         except json.JSONDecodeError:
             result = ERR_CODE_INVALID_RSP_JSON
-        except aiohttp.ClientTimeout:
+        except aiohttp.ServerTimeoutError:
             result = ERR_CODE_HTTP_TIMEOUT
         except aiohttp.InvalidURL:
             result = ERR_CODE_INVALID_URL
